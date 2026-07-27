@@ -50,8 +50,12 @@ class AudioFrameSink(Protocol):
     def receive_audio_frame(self, frame: AudioFrame) -> None: ...
 
 
+class AudioRtpSink(AudioFrameSink, Protocol):
+    def receive_rtp_packet(self, packet: bytes) -> None: ...
+
+
 class AudioFrameBoundary(Protocol):
-    def send_audio_frame(self, sink: AudioFrameSink, frame: AudioFrame) -> None: ...
+    def send_audio_frame(self, sink: AudioRtpSink, frame: AudioFrame) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,7 +92,7 @@ def generate_sine_wav(path: Path, spec: SineWaveSpec = DEFAULT_SINE_WAVE_SPEC) -
         wav_file.writeframes(bytes(frames))
 
 
-def replay_wav(path: Path, boundary: AudioFrameBoundary, sink: AudioFrameSink) -> list[AudioFrame]:
+def replay_wav(path: Path, boundary: AudioFrameBoundary, sink: AudioRtpSink) -> list[AudioFrame]:
     audio = read_wav_audio(path)
     frames = list(chunk_audio(audio, DEFAULT_CHUNK_DURATION_MS))
     for frame in frames:
