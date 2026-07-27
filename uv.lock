@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.12"
 
 [[package]]
-name = "bitnp-mic"
+name = "bitnp-raspberrygirl-vtuber-mic"
 version = "0.1.0"
 source = { editable = "." }
 
