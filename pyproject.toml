@@ -3,7 +3,10 @@ name = "bitnp-raspberrygirl-vtuber-mic"
 version = "0.1.0"
 description = "Mode-agnostic microphone service scaffold for the distributed AI VTuber system."
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "sounddevice==0.5.5",
+    "websockets==16.1.1",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -16,6 +19,8 @@ dev = [
 
 [project.scripts]
 mic-health = "mic.health:main"
+mic-capture = "mic.capture:main"
+mic-stream = "mic.stream_cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mic"]
@@ -29,3 +34,7 @@ filterwarnings = ["error"]
 markers = [
     "real_adapter: opt-in smoke tests for live or fake-local real adapter boundaries",
 ]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"

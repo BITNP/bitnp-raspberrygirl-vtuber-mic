@@ -3,7 +3,13 @@ from pathlib import Path
 
 import pytest
 
-from mic.audio import AudioContractError, AudioFrame, SineWaveSpec, generate_sine_wav, replay_wav
+from mic.audio import (
+    AudioContractError,
+    AudioFrame,
+    SineWaveSpec,
+    generate_sine_wav,
+    replay_wav,
+)
 from mic.config import load_config
 from mic.orchestrator_ws import OrchestratorWebSocketBoundary
 
@@ -14,6 +20,9 @@ class FakeOrchestrator:
 
     def receive_audio_frame(self, frame: AudioFrame) -> None:
         self.frames.append(frame)
+
+    def receive_rtp_packet(self, packet: bytes) -> None:
+        pass
 
 
 def test_replay_wav_emits_normalized_pcm16_mono_frames_when_fixture_matches_contract(tmp_path: Path) -> None:

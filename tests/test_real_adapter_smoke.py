@@ -5,11 +5,26 @@ from pathlib import Path
 
 import pytest
 
-from mic.audio import generate_sine_wav, read_wav_audio
+from mic.audio import AudioFrame, generate_sine_wav, read_wav_audio
+from mic.config import load_config
+from mic.orchestrator_ws import OrchestratorWebSocketBoundary
+from mic.portaudio_capture import CaptureDevice, PortAudioCaptureSource
 
 MIC_WAV_ENV = "BITNP_REAL_MIC_WAV_PATH"
 FAKE_LOCAL_ENV = "BITNP_REAL_ADAPTER_FAKE_LOCAL"
 MALFORMED_ENV = "BITNP_REAL_ADAPTER_MALFORMED_CHECK"
+CAPTURE_DEVICE_ENV = "BITNP_CAPTURE_DEVICE"
+
+
+class LiveCaptureOrchestrator:
+    def __init__(self) -> None:
+        self.rtp_packets: list[bytes] = []
+
+    def receive_rtp_packet(self, packet: bytes) -> None:
+        self.rtp_packets.append(packet)
+
+    def receive_audio_frame(self, frame: AudioFrame) -> None:
+        raise AssertionError(f"expected RTP delivery, received raw frame {frame.metadata.seq}")
 
 
 @pytest.mark.real_adapter
@@ -37,6 +52,26 @@ def test_live_microphone_malformed_capture_reports_contract_error(tmp_path: Path
     # When / Then: a missing capture artifact reports a clear readiness failure.
     with pytest.raises(FileNotFoundError, match="missing-live-capture"):
         read_wav_audio(missing)
+
+
+@pytest.mark.real_adapter
+def test_portaudio_capture_emits_one_rtp_packet_when_explicit_device_is_configured() -> None:
+    # Given: an explicitly selected PortAudio capture device.
+    raw_device = os.environ.get(CAPTURE_DEVICE_ENV, "").strip()
+    if raw_device == "":
+        pytest.skip(f"set {CAPTURE_DEVICE_ENV} to run PortAudio capture smoke")
+    device: CaptureDevice = int(raw_device) if raw_device.isdecimal() else raw_device
+    boundary = OrchestratorWebSocketBoundary(load_config({"ORCHESTRATOR_WS_URL": "ws://orchestrator.local/ws"}))
+    boundary.start_rtp_stream(stream_id="portaudio-smoke", start_rtp_timestamp=0)
+    orchestrator = LiveCaptureOrchestrator()
+
+    # When: the real PortAudio adapter captures one fixed audio frame.
+    frame = PortAudioCaptureSource(device=device).capture_and_send(boundary, orchestrator)
+
+    # Then: capture produces one complete frame and one in-memory RTP packet.
+    assert frame is not None
+    assert len(frame.payload) == 640
+    assert len(orchestrator.rtp_packets) == 1
 
 
 def _mic_wav_path_or_skip(tmp_path: Path) -> Path:
