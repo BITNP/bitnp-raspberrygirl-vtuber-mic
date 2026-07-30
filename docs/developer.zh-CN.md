@@ -1,6 +1,6 @@
 # Mic 开发者文档
 
-Mic 是 Orchestrator-only 的 hub client。它不感知 `lecturer`、`virtual_streamer` 或 `onsite_explainer`，也不持有跨服务状态。
+Mic 是 Orchestrator-only 的 hub client。它不感知业务策略，也不持有跨服务状态。
 
 ## 技术栈
 

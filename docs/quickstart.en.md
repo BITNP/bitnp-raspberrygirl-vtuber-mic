@@ -12,7 +12,7 @@ Tests do not require a microphone device, GPU, or credentials. For a deployed st
 
 Run `uv run mic-stream` only after those deployment values are present. It binds UDP, registers the source over WSS, waits for `media.rtp.source.ready`, and sends one V2/PT96/L16 RTP packet per complete 16 kHz mono capture block. Leave `MIC_MAX_CAPTURE_BLOCKS` unset for continuous capture, or set it to a positive integer for a bounded verification run.
 
-For the onsite explainer loop, use the same `BITNP_SESSION_ID` and `BITNP_MIC_RTP_STREAM_ID` configured on Sound, and use the exact `/control` WSS URL. Start Orchestrator, then Sound, then Mic. Mic remains mode-agnostic and never has a direct Sound endpoint.
+For the onsite spoken-dialogue loop, use the same `BITNP_SESSION_ID` and `BITNP_MIC_RTP_STREAM_ID` configured on Sound, and use the exact `/control` WSS URL. Start Orchestrator, then Sound, then Mic. Mic remains strategy-agnostic and never has a direct Sound endpoint.
 
 `mic-capture` uses `sounddevice` and PortAudio to read one real audio frame. List the available PortAudio devices and their indexes with:
 
