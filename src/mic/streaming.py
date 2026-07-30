@@ -1,6 +1,7 @@
 import asyncio  # noqa: ANYIO_OK - asyncio owns the required UDP transport.
 import os
 from collections.abc import Mapping
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Final, NewType, Protocol
 from urllib.parse import urlparse
@@ -76,6 +77,8 @@ class StreamingControl(Protocol):
 
     async def wait_source_ready(self, registration: SourceRegistration) -> None: ...
 
+    async def wait_stop(self, registration: SourceRegistration) -> int: ...
+
     async def aclose(self) -> None: ...
 
 
@@ -111,13 +114,13 @@ class StreamRuntime:
             await self._resources.control.register_source(registration)
             await self._resources.control.wait_source_ready(registration)
             await self._resources.capture.open()
-            await self._send_capture_blocks()
+            await self._send_capture_blocks(registration)
         finally:
             await self._resources.capture.aclose()
             await self._resources.control.aclose()
             await self._resources.udp.aclose()
 
-    async def _send_capture_blocks(self) -> None:
+    async def _send_capture_blocks(self, registration: SourceRegistration) -> None:
         stream = RtpStream(
             stream_id=self._config.stream_id,
             sequence=RtpSequence(0),
@@ -125,18 +128,34 @@ class StreamRuntime:
             ssrc=MIC_RTP_SSRC,
         )
         sent_blocks = 0
-        while self._config.max_blocks is None or sent_blocks < self._config.max_blocks:
-            block = await self._resources.capture.read_block()
-            if block is None:
-                return
-            if len(block) != L16_FRAME_BYTES:
-                raise ConfigError(
-                    key="capture.block",
-                    reason="must contain exactly 640 PCM16 bytes",
+        stop_task = asyncio.create_task(self._resources.control.wait_stop(registration))
+        try:
+            while self._config.max_blocks is None or sent_blocks < self._config.max_blocks:
+                capture_task = asyncio.create_task(self._resources.capture.read_block())
+                done, _ = await asyncio.wait(
+                    (capture_task, stop_task), return_when=asyncio.FIRST_COMPLETED
                 )
-            packet, stream = packetize_l16_pcm16le(block, stream)
-            await self._resources.udp.send(packet, self._config.rtp_endpoint)
-            sent_blocks += 1
+                if stop_task in done:
+                    _ = stop_task.result()
+                    capture_task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await capture_task
+                    return
+                block = capture_task.result()
+                if block is None:
+                    return
+                if len(block) != L16_FRAME_BYTES:
+                    raise ConfigError(
+                        key="capture.block",
+                        reason="must contain exactly 640 PCM16 bytes",
+                    )
+                packet, stream = packetize_l16_pcm16le(block, stream)
+                await self._resources.udp.send(packet, self._config.rtp_endpoint)
+                sent_blocks += 1
+        finally:
+            stop_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await stop_task
 
 
 class AsyncioUdpSender:
