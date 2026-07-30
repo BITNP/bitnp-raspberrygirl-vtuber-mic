@@ -1,9 +1,3 @@
-"""模块契约说明.
-
-职责: 提供 mic.stream_control
-模块的领域模型、边界函数和运行时协作逻辑。
-契约: 模块只提供注释所描述的公开入口,不在文档更新中改变运行时行为。
-"""
 
 import json
 from dataclasses import dataclass
@@ -30,12 +24,6 @@ SOUND_FLUSH_EVENT: Final = "media.stream.flush"
 
 @dataclass(frozen=True, slots=True)
 class ControlContext:
-    """类契约说明.
-
-    职责: 保存 ControlContext
-    不可变数据结构,用类型标注表达字段契约。
-    契约: 字段: trace_id、session_id。
-    """
 
     trace_id: str
 
@@ -43,68 +31,25 @@ class ControlContext:
 
 
 class ControlConnection(Protocol):
-    """类契约说明.
-
-    职责: 声明 ControlConnection
-    协议接口,约束实现方必须提供的行为。
-    契约: 方法: send、recv、close。
-    """
 
     async def send(self, message: str) -> None:
-        """函数契约说明.
-
-        功能: 发送协议消息或媒体数据。
-        参数: self 表示当前实例。 message: str。
-        必填。
-        契约: 异步调用。 返回 `None`。
-        """
 
         ...
 
     async def recv(self) -> str | bytes:
-        """函数契约说明.
-
-        功能: 执行 recv 的异步逻辑,并维持签名契约。
-        参数: self 表示当前实例。
-        契约: 异步调用。 返回 `str | bytes`。
-        """
 
         ...
 
     async def close(self) -> None:
-        """函数契约说明.
-
-        功能: 执行 close 的异步逻辑,并维持签名契约。
-        参数: self 表示当前实例。
-        契约: 异步调用。 返回 `None`。
-        """
 
         ...
 
 
 class WebSocketStreamingControl:
-    """类契约说明.
-
-    职责: 定义 WebSocketStreamingControl
-    的状态、行为和对外协作边界。
-    契约: 方法: __init__、open、register_sourc
-    e、wait_source_ready、wait_stop、aclose
-    。
-    """
 
     __slots__ = ("_connection", "_context", "_highest_stop_epochs")
 
     def __init__(self, connection: ControlConnection, context: ControlContext) -> None:
-        """函数契约说明.
-
-        功能: 初始化
-        WebSocketStreamingControl
-        的字段并建立实例不变式。
-        参数: self 表示当前实例。 connection:
-        ControlConnection。 必填。 context:
-        ControlContext。 必填。
-        契约: 同步调用。 返回 `None`。
-        """
 
         self._connection = connection
 
@@ -116,16 +61,6 @@ class WebSocketStreamingControl:
     async def open(
         cls, service_config: ServiceConfig, context: ControlContext
     ) -> "WebSocketStreamingControl":
-        """函数契约说明.
-
-        功能: 执行 open 的异步逻辑,并协调 cls,
-        connect, _authorization_header。
-        参数: cls 表示当前类。 service_config:
-        ServiceConfig。 必填。 context:
-        ControlContext。 必填。
-        契约: 异步调用。 可能等待 I/O 或协程结果。 返回
-        `'WebSocketStreamingControl'`。
-        """
 
         connection = await connect(
             service_config.orchestrator_ws_url,
@@ -135,15 +70,6 @@ class WebSocketStreamingControl:
         return cls(connection, context)
 
     async def register_source(self, registration: SourceRegistration) -> None:
-        """函数契约说明.
-
-        功能: 执行 register_source 的异步逻辑,并协调
-        str, isoformat, send, uuid4。
-        参数: self 表示当前实例。 registration:
-        SourceRegistration。 必填。
-        契约: 异步调用。 可能等待 I/O 或协程结果。 返回
-        `None`。
-        """
 
         event = {
             "schema_version": SCHEMA_VERSION,
@@ -174,16 +100,6 @@ class WebSocketStreamingControl:
         await self._connection.send(json.dumps(event, separators=(",", ":")))
 
     async def wait_source_ready(self, registration: SourceRegistration) -> None:
-        """函数契约说明.
-
-        功能: 执行 wait_source_ready
-        的异步逻辑,并协调 get, recv, isinstance,
-        ConfigError。
-        参数: self 表示当前实例。 registration:
-        SourceRegistration。 必填。
-        契约: 异步调用。 可能等待 I/O 或协程结果。 返回
-        `None`。 可能抛出 ConfigError。
-        """
 
         raw_event = await self._connection.recv()
 
@@ -220,15 +136,6 @@ class WebSocketStreamingControl:
             )
 
     async def wait_stop(self, registration: SourceRegistration) -> int:
-        """函数契约说明.
-
-        功能: 执行 wait_stop 的异步逻辑,并协调 get,
-        recv, isinstance, ConfigError。
-        参数: self 表示当前实例。 registration:
-        SourceRegistration。 必填。
-        契约: 异步调用。 可能等待 I/O 或协程结果。 返回
-        `int`。 可能抛出 ConfigError。
-        """
 
         while True:
             raw_event = await self._connection.recv()
@@ -298,25 +205,11 @@ class WebSocketStreamingControl:
             return epoch
 
     async def aclose(self) -> None:
-        """函数契约说明.
-
-        功能: 执行 aclose 的异步逻辑,并协调 close。
-        参数: self 表示当前实例。
-        契约: 异步调用。 可能等待 I/O 或协程结果。 返回
-        `None`。
-        """
 
         await self._connection.close()
 
 
 def _authorization_header(config: ServiceConfig) -> dict[str, str]:
-    """函数契约说明.
-
-    功能: 执行 _authorization_header
-    的同步逻辑,并产出 token。
-    参数: config: ServiceConfig。 必填。
-    契约: 同步调用。 返回 `dict[str, str]`。
-    """
 
     token = config.trusted_lan_token
 

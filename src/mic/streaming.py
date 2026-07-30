@@ -1,9 +1,3 @@
-"""模块契约说明.
-
-职责: 提供 mic.streaming
-模块的领域模型、边界函数和运行时协作逻辑。
-契约: 模块只提供注释所描述的公开入口,不在文档更新中改变运行时行为。
-"""
 
 import asyncio  # noqa: ANYIO_OK - asyncio owns the required UDP transport.
 import os
@@ -54,12 +48,6 @@ LOOPBACK_HOSTS: Final = frozenset({"127.0.0.1", "::1", "localhost"})
 
 @dataclass(frozen=True, slots=True)
 class RtpEndpoint:
-    """类契约说明.
-
-    职责: 保存 RtpEndpoint
-    不可变数据结构,用类型标注表达字段契约。
-    契约: 字段: host、port。
-    """
 
     host: str
 
@@ -68,12 +56,6 @@ class RtpEndpoint:
 
 @dataclass(frozen=True, slots=True)
 class SourceRegistration:
-    """类契约说明.
-
-    职责: 保存 SourceRegistration
-    不可变数据结构,用类型标注表达字段契约。
-    契约: 字段: stream_id、rtp_endpoint。
-    """
 
     stream_id: str
 
@@ -82,14 +64,6 @@ class SourceRegistration:
 
 @dataclass(frozen=True, slots=True)
 class StreamingRuntimeConfig:
-    """类契约说明.
-
-    职责: 保存 StreamingRuntimeConfig
-    不可变数据结构,用类型标注表达字段契约。
-    契约: 字段: stream_id、start_timestamp、rt
-    p_endpoint、udp_bind_endpoint、max_blo
-    cks、service_config。
-    """
 
     stream_id: str
 
@@ -112,167 +86,63 @@ class StreamingRuntimeConfig:
 
 @dataclass(frozen=True, slots=True)
 class UdpSenderStateError(RuntimeError):
-    """类契约说明.
-
-    职责: 保存 UdpSenderStateError
-    不可变数据结构,用类型标注表达字段契约。
-    契约: 方法: __str__。
-    """
 
     def __str__(self) -> str:
-        """函数契约说明.
-
-        功能: 生成面向日志、错误或调试输出的稳定文本表示。
-        参数: self 表示当前实例。
-        契约: 同步调用。 返回 `str`。
-        """
 
         return "UDP sender must bind before sending"
 
 
 class BlockCapture(Protocol):
-    """类契约说明.
-
-    职责: 声明 BlockCapture
-    协议接口,约束实现方必须提供的行为。
-    契约: 方法: open、read_block、aclose。
-    """
 
     async def open(self) -> None:
-        """函数契约说明.
-
-        功能: 执行 open 的异步逻辑,并维持签名契约。
-        参数: self 表示当前实例。
-        契约: 异步调用。 返回 `None`。
-        """
 
         ...
 
     async def read_block(self) -> bytes | None:
-        """函数契约说明.
-
-        功能: 执行 read_block 的异步逻辑,并维持签名契约。
-        参数: self 表示当前实例。
-        契约: 异步调用。 返回 `bytes | None`。
-        """
 
         ...
 
     async def aclose(self) -> None:
-        """函数契约说明.
-
-        功能: 执行 aclose 的异步逻辑,并维持签名契约。
-        参数: self 表示当前实例。
-        契约: 异步调用。 返回 `None`。
-        """
 
         ...
 
 
 class StreamingControl(Protocol):
-    """类契约说明.
-
-    职责: 声明 StreamingControl
-    协议接口,约束实现方必须提供的行为。
-    契约: 方法: register_source、wait_source_
-    ready、wait_stop、aclose。
-    """
 
     async def register_source(self, registration: SourceRegistration) -> None:
-        """函数契约说明.
-
-        功能: 执行 register_source
-        的异步逻辑,并维持签名契约。
-        参数: self 表示当前实例。 registration:
-        SourceRegistration。 必填。
-        契约: 异步调用。 返回 `None`。
-        """
 
         ...
 
     async def wait_source_ready(self, registration: SourceRegistration) -> None:
-        """函数契约说明.
-
-        功能: 执行 wait_source_ready
-        的异步逻辑,并维持签名契约。
-        参数: self 表示当前实例。 registration:
-        SourceRegistration。 必填。
-        契约: 异步调用。 返回 `None`。
-        """
 
         ...
 
     async def wait_stop(self, registration: SourceRegistration) -> int:
-        """函数契约说明.
-
-        功能: 执行 wait_stop 的异步逻辑,并维持签名契约。
-        参数: self 表示当前实例。 registration:
-        SourceRegistration。 必填。
-        契约: 异步调用。 返回 `int`。
-        """
 
         ...
 
     async def aclose(self) -> None:
-        """函数契约说明.
-
-        功能: 执行 aclose 的异步逻辑,并维持签名契约。
-        参数: self 表示当前实例。
-        契约: 异步调用。 返回 `None`。
-        """
 
         ...
 
 
 class UdpPacketSender(Protocol):
-    """类契约说明.
-
-    职责: 声明 UdpPacketSender
-    协议接口,约束实现方必须提供的行为。
-    契约: 方法: bind、send、aclose。
-    """
 
     async def bind(self, endpoint: RtpEndpoint) -> None:
-        """函数契约说明.
-
-        功能: 执行 bind 的异步逻辑,并维持签名契约。
-        参数: self 表示当前实例。 endpoint:
-        RtpEndpoint。 必填。
-        契约: 异步调用。 返回 `None`。
-        """
 
         ...
 
     async def send(self, packet: bytes, endpoint: RtpEndpoint) -> None:
-        """函数契约说明.
-
-        功能: 发送协议消息或媒体数据。
-        参数: self 表示当前实例。 packet: bytes。
-        必填。 endpoint: RtpEndpoint。 必填。
-        契约: 异步调用。 返回 `None`。
-        """
 
         ...
 
     async def aclose(self) -> None:
-        """函数契约说明.
-
-        功能: 执行 aclose 的异步逻辑,并维持签名契约。
-        参数: self 表示当前实例。
-        契约: 异步调用。 返回 `None`。
-        """
 
         ...
 
 
 @dataclass(frozen=True, slots=True)
 class StreamResources:
-    """类契约说明.
-
-    职责: 保存 StreamResources
-    不可变数据结构,用类型标注表达字段契约。
-    契约: 字段: capture、control、udp。
-    """
 
     capture: BlockCapture
 
@@ -282,40 +152,18 @@ class StreamResources:
 
 
 class StreamRuntime:
-    """类契约说明.
-
-    职责: 定义 StreamRuntime 的状态、行为和对外协作边界。
-    契约: 方法:
-    __init__、run、_send_capture_blocks。
-    """
 
     __slots__ = ("_config", "_resources")
 
     def __init__(
         self, config: StreamingRuntimeConfig, resources: StreamResources
     ) -> None:
-        """函数契约说明.
-
-        功能: 初始化 StreamRuntime
-        的字段并建立实例不变式。
-        参数: self 表示当前实例。 config:
-        StreamingRuntimeConfig。 必填。
-        resources: StreamResources。 必填。
-        契约: 同步调用。 返回 `None`。
-        """
 
         self._config = config
 
         self._resources = resources
 
     async def run(self) -> None:
-        """函数契约说明.
-
-        功能: 运行流程并协调其依赖步骤。
-        参数: self 表示当前实例。
-        契约: 异步调用。 可能等待 I/O 或协程结果。 返回
-        `None`。
-        """
 
         registration = SourceRegistration(
             stream_id=self._config.stream_id,
@@ -341,16 +189,6 @@ class StreamRuntime:
             await self._resources.udp.aclose()
 
     async def _send_capture_blocks(self, registration: SourceRegistration) -> None:
-        """函数契约说明.
-
-        功能: 执行 _send_capture_blocks
-        的异步逻辑,并协调 RtpStream,
-        create_task, wait_stop, cancel。
-        参数: self 表示当前实例。 registration:
-        SourceRegistration。 必填。
-        契约: 异步调用。 可能等待 I/O 或协程结果。 返回
-        `None`。 可能抛出 ConfigError。
-        """
 
         stream = RtpStream(
             stream_id=self._config.stream_id,
@@ -408,37 +246,14 @@ class StreamRuntime:
 
 
 class AsyncioUdpSender:
-    """类契约说明.
-
-    职责: 定义 AsyncioUdpSender
-    的状态、行为和对外协作边界。
-    契约: 方法: __init__、bind、send、aclose。
-    """
 
     __slots__ = ("_transport",)
 
     def __init__(self) -> None:
-        """函数契约说明.
-
-        功能: 初始化 AsyncioUdpSender
-        的字段并建立实例不变式。
-        参数: self 表示当前实例。
-        契约: 同步调用。 返回 `None`。
-        """
 
         self._transport: asyncio.DatagramTransport | None = None
 
     async def bind(self, endpoint: RtpEndpoint) -> None:
-        """函数契约说明.
-
-        功能: 执行 bind 的异步逻辑,并协调
-        get_running_loop,
-        create_datagram_endpoint, int。
-        参数: self 表示当前实例。 endpoint:
-        RtpEndpoint。 必填。
-        契约: 异步调用。 可能等待 I/O 或协程结果。 返回
-        `None`。
-        """
 
         loop = asyncio.get_running_loop()
 
@@ -450,14 +265,6 @@ class AsyncioUdpSender:
         self._transport = transport
 
     async def send(self, packet: bytes, endpoint: RtpEndpoint) -> None:
-        """函数契约说明.
-
-        功能: 发送协议消息或媒体数据。
-        参数: self 表示当前实例。 packet: bytes。
-        必填。 endpoint: RtpEndpoint。 必填。
-        契约: 异步调用。 返回 `None`。 可能抛出
-        UdpSenderStateError。
-        """
 
         transport = self._transport
 
@@ -467,12 +274,6 @@ class AsyncioUdpSender:
         transport.sendto(packet, (endpoint.host, int(endpoint.port)))
 
     async def aclose(self) -> None:
-        """函数契约说明.
-
-        功能: 执行 aclose 的异步逻辑,并协调 close。
-        参数: self 表示当前实例。
-        契约: 异步调用。 返回 `None`。
-        """
 
         transport = self._transport
 
@@ -485,18 +286,6 @@ class AsyncioUdpSender:
 def load_streaming_runtime_config(
     env: Mapping[str, str] | None = None,
 ) -> StreamingRuntimeConfig:
-    """函数契约说明.
-
-    功能: 执行 load_streaming_runtime_config
-    的同步逻辑,并协调 load_config,
-    _enforce_control_security,
-    StreamingRuntimeConfig,
-    _required_text。
-    参数: env: Mapping[str, str] | None。
-    可省略。
-    契约: 同步调用。 返回
-    `StreamingRuntimeConfig`。
-    """
 
     source = os.environ if env is None else env
 
@@ -524,16 +313,6 @@ def load_streaming_runtime_config(
 
 
 def _enforce_control_security(config: ServiceConfig, env: Mapping[str, str]) -> None:
-    """函数契约说明.
-
-    功能: 执行 _enforce_control_security
-    的同步逻辑,并协调 urlparse, ConfigError,
-    _loopback_ws_allowed, lower。
-    参数: config: ServiceConfig。 必填。 env:
-    Mapping[str, str]。 必填。
-    契约: 同步调用。 返回 `None`。 可能抛出
-    ConfigError。
-    """
 
     parsed = urlparse(config.orchestrator_ws_url)
 
@@ -555,15 +334,6 @@ def _enforce_control_security(config: ServiceConfig, env: Mapping[str, str]) -> 
 
 
 def _loopback_ws_allowed(env: Mapping[str, str]) -> bool:
-    """函数契约说明.
-
-    功能: 执行 _loopback_ws_allowed
-    的同步逻辑,并协调 lower, ConfigError, strip,
-    get。
-    参数: env: Mapping[str, str]。 必填。
-    契约: 同步调用。 返回 `bool`。 可能抛出
-    ConfigError。
-    """
 
     value = env.get(MIC_ALLOW_LOOPBACK_WS_KEY, "false").strip().lower()
 
@@ -577,15 +347,6 @@ def _loopback_ws_allowed(env: Mapping[str, str]) -> bool:
 
 
 def _required_text(env: Mapping[str, str], key: str) -> str:
-    """函数契约说明.
-
-    功能: 执行 _required_text 的同步逻辑,并协调
-    strip, ConfigError, get。
-    参数: env: Mapping[str, str]。 必填。 key:
-    str。 必填。
-    契约: 同步调用。 返回 `str`。 可能抛出
-    ConfigError。
-    """
 
     value = env.get(key, "").strip()
 
@@ -596,15 +357,6 @@ def _required_text(env: Mapping[str, str], key: str) -> str:
 
 
 def _unsigned_timestamp(env: Mapping[str, str]) -> int:
-    """函数契约说明.
-
-    功能: 执行 _unsigned_timestamp 的同步逻辑,并协调
-    _required_text, int, ConfigError,
-    isdecimal。
-    参数: env: Mapping[str, str]。 必填。
-    契约: 同步调用。 返回 `int`。 可能抛出
-    ConfigError。
-    """
 
     value = _required_text(env, RTP_TIMESTAMP_KEY)
 
@@ -623,16 +375,6 @@ def _port(
     default: str | None = None,
     allow_zero: bool = False,
 ) -> RtpPort:
-    """函数契约说明.
-
-    功能: 执行 _port 的同步逻辑,并协调 get, int,
-    RtpPort, ConfigError。
-    参数: env: Mapping[str, str]。 必填。 key:
-    str。 必填。 default: str | None。 可省略。
-    allow_zero: bool。 可省略。
-    契约: 同步调用。 返回 `RtpPort`。 可能抛出
-    ConfigError。
-    """
 
     value = env.get(key, default)
 
@@ -648,14 +390,6 @@ def _port(
 
 
 def _max_blocks(env: Mapping[str, str]) -> int | None:
-    """函数契约说明.
-
-    功能: 执行 _max_blocks 的同步逻辑,并协调 strip,
-    int, ConfigError, get。
-    参数: env: Mapping[str, str]。 必填。
-    契约: 同步调用。 返回 `int | None`。 可能抛出
-    ConfigError。
-    """
 
     value = env.get(MAX_CAPTURE_BLOCKS_KEY, "").strip()
 
@@ -672,13 +406,6 @@ def _max_blocks(env: Mapping[str, str]) -> int | None:
 
 
 def _capture_device(env: Mapping[str, str]) -> CaptureDevice:
-    """函数契约说明.
-
-    功能: 执行 _capture_device 的同步逻辑,并协调
-    strip, isdecimal, int, get。
-    参数: env: Mapping[str, str]。 必填。
-    契约: 同步调用。 返回 `CaptureDevice`。
-    """
 
     value = env.get(CAPTURE_DEVICE_KEY, "").strip()
 

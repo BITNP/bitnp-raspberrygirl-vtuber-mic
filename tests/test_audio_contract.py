@@ -1,8 +1,3 @@
-"""模块契约说明.
-
-职责: 为测试场景提供断言、夹具和回归用例。
-契约: 模块只提供注释所描述的公开入口,不在文档更新中改变运行时行为。
-"""
 
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,37 +15,15 @@ from mic.audio import (
 
 @dataclass(slots=True)
 class FakeOrchestrator:
-    """类契约说明.
-
-    职责: 保存 FakeOrchestrator
-    不可变数据结构,用类型标注表达字段契约。
-    契约: 字段: frames。 方法: receive_audio_fr
-    ame、receive_rtp_packet。
-    """
 
     frames: list[AudioFrame] = field(default_factory=list)
 
     def receive_audio_frame(self, frame: AudioFrame) -> None:
-        """函数契约说明.
-
-        功能: 执行 receive_audio_frame
-        的同步逻辑,并协调 append。
-        参数: self 表示当前实例。 frame:
-        AudioFrame。 必填。
-        契约: 同步调用。 返回 `None`。
-        """
 
         self.frames.append(frame)
 
     def receive_rtp_packet(self, packet: bytes) -> None:
-        """函数契约说明.
-
-        功能: 执行 receive_rtp_packet
-        的同步逻辑,并维持签名契约。
-        参数: self 表示当前实例。 packet: bytes。
-        必填。
-        契约: 同步调用。 返回 `None`。
-        """
+        _ = packet
 
 
 
@@ -59,14 +32,6 @@ def test_replay_wav_emits_normalized_pcm16_mono_frames_when_fixture_matches_cont
 ) -> None:
     # Given: a deterministic one-second 16kHz mono PCM16 WAV fixture.
 
-    """函数契约说明.
-
-    功能: 验证 replay wav emits normalized
-    pcm16 mono frames when fixture
-    matches contract 的回归场景和可观察结果。
-    参数: tmp_path: Path。 必填。
-    契约: 同步调用。 返回 `None`。
-    """
 
     fixture = tmp_path / "sine-16k-mono.wav"
 
@@ -107,14 +72,6 @@ def test_replay_wav_rejects_nonconforming_stereo_fixture_with_observed_metadata(
 ) -> None:
     # Given: a deterministic WAV fixture outside the mic contract.
 
-    """函数契约说明.
-
-    功能: 验证 replay wav rejects
-    nonconforming stereo fixture with
-    observed metadata 的回归场景和可观察结果。
-    参数: tmp_path: Path。 必填。
-    契约: 同步调用。 返回 `None`。
-    """
 
     fixture = tmp_path / "sine-44k-stereo.wav"
 

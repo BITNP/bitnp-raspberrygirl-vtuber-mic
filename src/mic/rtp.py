@@ -1,8 +1,3 @@
-"""模块契约说明.
-
-职责: 提供 mic.rtp 模块的领域模型、边界函数和运行时协作逻辑。
-契约: 模块只提供注释所描述的公开入口,不在文档更新中改变运行时行为。
-"""
 
 from dataclasses import dataclass
 from typing import Final, NewType
@@ -29,13 +24,6 @@ MIC_RTP_SSRC: Final = RtpSsrc(0x4D494331)
 
 @dataclass(frozen=True, slots=True)
 class RtpStream:
-    """类契约说明.
-
-    职责: 保存 RtpStream
-    不可变数据结构,用类型标注表达字段契约。
-    契约: 字段:
-    stream_id、sequence、timestamp、ssrc。
-    """
 
     stream_id: str
 
@@ -48,13 +36,6 @@ class RtpStream:
 
 @dataclass(frozen=True, slots=True)
 class RtpPacket:
-    """类契约说明.
-
-    职责: 保存 RtpPacket
-    不可变数据结构,用类型标注表达字段契约。
-    契约: 字段:
-    sequence、timestamp、ssrc、payload。
-    """
 
     sequence: RtpSequence
 
@@ -67,27 +48,11 @@ class RtpPacket:
 
 @dataclass(frozen=True, slots=True)
 class RtpPacketRejected:
-    """类契约说明.
-
-    职责: 保存 RtpPacketRejected
-    不可变数据结构,用类型标注表达字段契约。
-    契约: 字段: reason。
-    """
 
     reason: str
 
 
 def packetize_l16_pcm16le(payload: bytes, stream: RtpStream) -> tuple[bytes, RtpStream]:
-    """函数契约说明.
-
-    功能: 执行 packetize_l16_pcm16le
-    的同步逻辑,并协调 join, RtpStream, bytes,
-    to_bytes。
-    参数: payload: bytes。 必填。 stream:
-    RtpStream。 必填。
-    契约: 同步调用。 返回 `tuple[bytes,
-    RtpStream]`。
-    """
 
     l16_payload = b"".join(
         payload[index : index + 2][::-1] for index in range(0, len(payload), 2)
@@ -116,13 +81,6 @@ def packetize_l16_pcm16le(payload: bytes, stream: RtpStream) -> tuple[bytes, Rtp
 
 
 def parse_l16_rtp_packet(packet: bytes) -> RtpPacket | RtpPacketRejected:
-    """函数契约说明.
-
-    功能: 从边界输入解析类型化值。
-    参数: packet: bytes。 必填。
-    契约: 同步调用。 返回 `RtpPacket |
-    RtpPacketRejected`。
-    """
 
     if len(packet) < RTP_HEADER_SIZE:
         return RtpPacketRejected(

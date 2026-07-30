@@ -1,8 +1,3 @@
-"""模块契约说明.
-
-职责: 为测试场景提供断言、夹具和回归用例。
-契约: 模块只提供注释所描述的公开入口,不在文档更新中改变运行时行为。
-"""
 
 from __future__ import annotations
 
@@ -27,13 +22,6 @@ CAPTURE_DEVICE_ENV = "BITNP_CAPTURE_DEVICE"
 def test_live_microphone_capture_smoke_when_explicitly_enabled(tmp_path: Path) -> None:
     # Given: either a fake local capture file or an explicit live microphone capture artifact.
 
-    """函数契约说明.
-
-    功能: 验证 live microphone capture smoke
-    when explicitly enabled 的回归场景和可观察结果。
-    参数: tmp_path: Path。 必填。
-    契约: 同步调用。 返回 `None`。
-    """
 
     wav_path = _mic_wav_path_or_skip(tmp_path)
 
@@ -58,14 +46,6 @@ def test_live_microphone_malformed_capture_reports_contract_error(
 ) -> None:
     # Given: malformed endpoint checking is explicitly enabled.
 
-    """函数契约说明.
-
-    功能: 验证 live microphone malformed
-    capture reports contract error
-    的回归场景和可观察结果。
-    参数: tmp_path: Path。 必填。
-    契约: 同步调用。 返回 `None`。
-    """
 
     if os.environ.get(MALFORMED_ENV) != "1":
         pytest.skip(f"set {MALFORMED_ENV}=1 to run malformed microphone smoke")
@@ -84,14 +64,6 @@ def test_portaudio_capture_reads_one_frame_when_explicit_device_is_configured() 
 ):
     # Given: an explicitly selected PortAudio capture device.
 
-    """函数契约说明.
-
-    功能: 验证 portaudio capture emits one
-    rtp packet when explicit device is
-    configured 的回归场景和可观察结果。
-    参数: 无显式业务参数。
-    契约: 同步调用。 返回 `None`。
-    """
 
     raw_device = os.environ.get(CAPTURE_DEVICE_ENV, "").strip()
 
@@ -112,14 +84,6 @@ def test_portaudio_capture_reads_one_frame_when_explicit_device_is_configured() 
 
 
 def _mic_wav_path_or_skip(tmp_path: Path) -> Path:
-    """函数契约说明.
-
-    功能: 执行 _mic_wav_path_or_skip
-    的同步逻辑,并协调 strip, Path, get,
-    generate_sine_wav。
-    参数: tmp_path: Path。 必填。
-    契约: 同步调用。 返回 `Path`。
-    """
 
     if os.environ.get(FAKE_LOCAL_ENV) == "1":
         wav_path = tmp_path / "fake-local-mic.wav"

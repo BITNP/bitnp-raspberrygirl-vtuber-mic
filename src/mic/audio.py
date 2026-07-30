@@ -1,8 +1,3 @@
-"""模块契约说明.
-
-职责: 提供 mic.audio 模块的领域模型、边界函数和运行时协作逻辑。
-契约: 模块只提供注释所描述的公开入口,不在文档更新中改变运行时行为。
-"""
 
 import math
 import wave
@@ -39,13 +34,6 @@ DEFAULT_SINE_AMPLITUDE: Final = 12000
 
 @dataclass(frozen=True, slots=True)
 class AudioContractError(Exception):
-    """类契约说明.
-
-    职责: 保存 AudioContractError
-    不可变数据结构,用类型标注表达字段契约。
-    契约: 字段: sample_rate、channels、codec。
-    方法: __str__。
-    """
 
     sample_rate: int
 
@@ -54,25 +42,12 @@ class AudioContractError(Exception):
     codec: str
 
     def __str__(self) -> str:
-        """函数契约说明.
-
-        功能: 生成面向日志、错误或调试输出的稳定文本表示。
-        参数: self 表示当前实例。
-        契约: 同步调用。 返回 `str`。
-        """
 
         return f"unsupported audio contract sample_rate={self.sample_rate} channels={self.channels} codec={self.codec}"
 
 
 @dataclass(frozen=True, slots=True)
 class AudioMetadata:
-    """类契约说明.
-
-    职责: 保存 AudioMetadata
-    不可变数据结构,用类型标注表达字段契约。
-    契约: 字段: seq、sample_rate、channels、cod
-    ec、duration_ms、byte_length。
-    """
 
     seq: FrameSeq
 
@@ -89,12 +64,6 @@ class AudioMetadata:
 
 @dataclass(frozen=True, slots=True)
 class AudioFrame:
-    """类契约说明.
-
-    职责: 保存 AudioFrame
-    不可变数据结构,用类型标注表达字段契约。
-    契约: 字段: metadata、payload。
-    """
 
     metadata: AudioMetadata
 
@@ -102,35 +71,14 @@ class AudioFrame:
 
 
 class AudioFrameSink(Protocol):
-    """类契约说明.
-
-    职责: 声明 AudioFrameSink
-    协议接口,约束实现方必须提供的行为。
-    契约: 方法: receive_audio_frame。
-    """
 
     def receive_audio_frame(self, frame: AudioFrame) -> None:
-        """函数契约说明.
-
-        功能: 执行 receive_audio_frame
-        的同步逻辑,并维持签名契约。
-        参数: self 表示当前实例。 frame:
-        AudioFrame。 必填。
-        契约: 同步调用。 返回 `None`。
-        """
 
         ...
 
 
 @dataclass(frozen=True, slots=True)
 class SineWaveSpec:
-    """类契约说明.
-
-    职责: 保存 SineWaveSpec
-    不可变数据结构,用类型标注表达字段契约。
-    契约: 字段: sample_rate、channels、duratio
-    n_ms、frequency_hz。
-    """
 
     sample_rate: int = PCM16_MONO_SAMPLE_RATE
 
@@ -146,12 +94,6 @@ DEFAULT_SINE_WAVE_SPEC: Final = SineWaveSpec()
 
 @dataclass(frozen=True, slots=True)
 class WavAudio:
-    """类契约说明.
-
-    职责: 保存 WavAudio 不可变数据结构,用类型标注表达字段契约。
-    契约: 字段:
-    sample_rate、channels、codec、pcm。
-    """
 
     sample_rate: SampleRate
 
@@ -163,14 +105,6 @@ class WavAudio:
 
 
 def generate_sine_wav(path: Path, spec: SineWaveSpec = DEFAULT_SINE_WAVE_SPEC) -> None:
-    """函数契约说明.
-
-    功能: 执行 generate_sine_wav 的同步逻辑,并协调
-    bytearray, range, int, to_bytes。
-    参数: path: Path。 必填。 spec:
-    SineWaveSpec。 可省略。
-    契约: 同步调用。 返回 `None`。
-    """
 
     sample_count = spec.sample_rate * spec.duration_ms // 1000
 
@@ -200,15 +134,6 @@ def generate_sine_wav(path: Path, spec: SineWaveSpec = DEFAULT_SINE_WAVE_SPEC) -
 
 
 def replay_wav(path: Path, sink: AudioFrameSink) -> list[AudioFrame]:
-    """函数契约说明.
-
-    功能: 执行 replay_wav 的同步逻辑,并协调
-    read_wav_audio、list、chunk_audio、
-    receive_audio_frame。
-    参数: path: Path。 必填。 sink:
-    AudioFrameSink。 必填。
-    契约: 同步调用。 返回 `list[AudioFrame]`。
-    """
 
     audio = read_wav_audio(path)
 
@@ -221,15 +146,6 @@ def replay_wav(path: Path, sink: AudioFrameSink) -> list[AudioFrame]:
 
 
 def read_wav_audio(path: Path) -> WavAudio:
-    """函数契约说明.
-
-    功能: 执行 read_wav_audio 的同步逻辑,并协调
-    codec_from_sample_width, WavAudio,
-    open, getnchannels。
-    参数: path: Path。 必填。
-    契约: 同步调用。 返回 `WavAudio`。 可能抛出
-    AudioContractError。
-    """
 
     with wave.open(str(path), "rb") as wav_file:
         channels = wav_file.getnchannels()
@@ -260,13 +176,6 @@ def read_wav_audio(path: Path) -> WavAudio:
 
 
 def codec_from_sample_width(sample_width: int) -> str:
-    """函数契约说明.
-
-    功能: 执行 codec_from_sample_width
-    的同步逻辑,并维持签名契约。
-    参数: sample_width: int。 必填。
-    契约: 同步调用。 返回 `str`。
-    """
 
     if sample_width == PCM16_BYTES_PER_SAMPLE:
         return PCM16_CODEC
@@ -275,15 +184,6 @@ def codec_from_sample_width(sample_width: int) -> str:
 
 
 def chunk_audio(audio: WavAudio, chunk_duration_ms: DurationMs) -> Iterator[AudioFrame]:
-    """函数契约说明.
-
-    功能: 执行 chunk_audio 的同步逻辑,并协调
-    enumerate, range, int, len。
-    参数: audio: WavAudio。 必填。
-    chunk_duration_ms: DurationMs。 必填。
-    契约: 同步调用。 返回迭代或生成器协议。 返回
-    `Iterator[AudioFrame]`。
-    """
 
     chunk_size = (
         int(audio.sample_rate)
@@ -310,14 +210,6 @@ def chunk_audio(audio: WavAudio, chunk_duration_ms: DurationMs) -> Iterator[Audi
 
 
 def duration_from_byte_length(byte_length: ByteLength, audio: WavAudio) -> DurationMs:
-    """函数契约说明.
-
-    功能: 执行 duration_from_byte_length
-    的同步逻辑,并协调 DurationMs, int。
-    参数: byte_length: ByteLength。 必填。
-    audio: WavAudio。 必填。
-    契约: 同步调用。 返回 `DurationMs`。
-    """
 
     bytes_per_second = (
         int(audio.sample_rate) * int(audio.channels) * PCM16_BYTES_PER_SAMPLE

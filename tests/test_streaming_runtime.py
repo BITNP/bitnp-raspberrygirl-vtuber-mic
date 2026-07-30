@@ -1,8 +1,3 @@
-"""模块契约说明.
-
-职责: 为测试场景提供断言、夹具和回归用例。
-契约: 模块只提供注释所描述的公开入口,不在文档更新中改变运行时行为。
-"""
 
 import asyncio  # noqa: ANYIO_OK - exercises asyncio cancellation and UDP seams.
 from dataclasses import dataclass, field
@@ -23,13 +18,6 @@ from mic.streaming import (
 
 @dataclass(slots=True)  # noqa: MUTABLE_OK - records fake capture calls.
 class FakeCapture:
-    """类契约说明.
-
-    职责: 保存 FakeCapture
-    不可变数据结构,用类型标注表达字段契约。
-    契约: 字段: blocks、reads、opened、closed。
-    方法: open、read_block、aclose。
-    """
 
     blocks: list[bytes | None]
 
@@ -40,48 +28,22 @@ class FakeCapture:
     closed: bool = False
 
     async def open(self) -> None:
-        """函数契约说明.
-
-        功能: 执行 open 的异步逻辑,并产出 opened。
-        参数: self 表示当前实例。
-        契约: 异步调用。 返回 `None`。
-        """
 
         self.opened = True
 
     async def read_block(self) -> bytes | None:
-        """函数契约说明.
-
-        功能: 执行 read_block 的异步逻辑,并协调 pop。
-        参数: self 表示当前实例。
-        契约: 异步调用。 返回 `bytes | None`。
-        """
 
         self.reads += 1
 
         return self.blocks.pop(0)
 
     async def aclose(self) -> None:
-        """函数契约说明.
-
-        功能: 执行 aclose 的异步逻辑,并产出 closed。
-        参数: self 表示当前实例。
-        契约: 异步调用。 返回 `None`。
-        """
 
         self.closed = True
 
 
 @dataclass(slots=True)  # noqa: MUTABLE_OK - blocks and releases cancellation deterministically.
 class BlockingCapture:
-    """类契约说明.
-
-    职责: 保存 BlockingCapture
-    不可变数据结构,用类型标注表达字段契约。
-    契约: 字段:
-    entered_read、release、closed、reads。
-    方法: open、read_block、aclose。
-    """
 
     entered_read: asyncio.Event = field(default_factory=asyncio.Event)
 
@@ -92,24 +54,10 @@ class BlockingCapture:
     reads: int = 0
 
     async def open(self) -> None:
-        """函数契约说明.
-
-        功能: 执行 open 的异步逻辑,并维持签名契约。
-        参数: self 表示当前实例。
-        契约: 异步调用。 返回 `None`。
-        """
 
         return
 
     async def read_block(self) -> bytes | None:
-        """函数契约说明.
-
-        功能: 执行 read_block 的异步逻辑,并协调 set,
-        wait。
-        参数: self 表示当前实例。
-        契约: 异步调用。 可能等待 I/O 或协程结果。 返回
-        `bytes | None`。
-        """
 
         self.reads += 1
 
@@ -120,24 +68,12 @@ class BlockingCapture:
         return None
 
     async def aclose(self) -> None:
-        """函数契约说明.
-
-        功能: 执行 aclose 的异步逻辑,并产出 closed。
-        参数: self 表示当前实例。
-        契约: 异步调用。 返回 `None`。
-        """
 
         self.closed = True
 
 
 @dataclass(slots=True)  # noqa: MUTABLE_OK - records fake UDP datagrams.
 class FakeUdp:
-    """类契约说明.
-
-    职责: 保存 FakeUdp 不可变数据结构,用类型标注表达字段契约。
-    契约: 字段: bound、sent、closed。 方法:
-    bind、send、aclose。
-    """
 
     bound: RtpEndpoint | None = None
 
@@ -146,49 +82,20 @@ class FakeUdp:
     closed: bool = False
 
     async def bind(self, endpoint: RtpEndpoint) -> None:
-        """函数契约说明.
-
-        功能: 执行 bind 的异步逻辑,并产出 bound。
-        参数: self 表示当前实例。 endpoint:
-        RtpEndpoint。 必填。
-        契约: 异步调用。 返回 `None`。
-        """
 
         self.bound = endpoint
 
     async def send(self, packet: bytes, endpoint: RtpEndpoint) -> None:
-        """函数契约说明.
-
-        功能: 发送协议消息或媒体数据。
-        参数: self 表示当前实例。 packet: bytes。
-        必填。 endpoint: RtpEndpoint。 必填。
-        契约: 异步调用。 返回 `None`。
-        """
 
         self.sent.append((packet, endpoint))
 
     async def aclose(self) -> None:
-        """函数契约说明.
-
-        功能: 执行 aclose 的异步逻辑,并产出 closed。
-        参数: self 表示当前实例。
-        契约: 异步调用。 返回 `None`。
-        """
 
         self.closed = True
 
 
 @dataclass(slots=True)  # noqa: MUTABLE_OK - records fake control lifecycle.
 class FakeControl:
-    """类契约说明.
-
-    职责: 保存 FakeControl
-    不可变数据结构,用类型标注表达字段契约。
-    契约: 字段:
-    capture、udp、registrations、closed。
-    方法: register_source、wait_source_read
-    y、wait_stop、aclose。
-    """
 
     capture: FakeCapture | BlockingCapture
 
@@ -199,26 +106,10 @@ class FakeControl:
     closed: bool = False
 
     async def register_source(self, registration: SourceRegistration) -> None:
-        """函数契约说明.
-
-        功能: 执行 register_source 的异步逻辑,并协调
-        append。
-        参数: self 表示当前实例。 registration:
-        SourceRegistration。 必填。
-        契约: 异步调用。 返回 `None`。
-        """
 
         self.registrations.append(registration)
 
     async def wait_source_ready(self, registration: SourceRegistration) -> None:
-        """函数契约说明.
-
-        功能: 执行 wait_source_ready
-        的异步逻辑,并维持签名契约。
-        参数: self 表示当前实例。 registration:
-        SourceRegistration。 必填。
-        契约: 异步调用。 返回 `None`。
-        """
 
         assert self.capture.reads == 0
 
@@ -227,40 +118,17 @@ class FakeControl:
         assert self.registrations == [registration]
 
     async def wait_stop(self, registration: SourceRegistration) -> int:
-        """函数契约说明.
-
-        功能: 执行 wait_stop 的异步逻辑,并产出 _。
-        参数: self 表示当前实例。 registration:
-        SourceRegistration。 必填。
-        契约: 异步调用。 可能等待 I/O 或协程结果。 返回
-        `int`。
-        """
 
         _ = registration
 
         return await asyncio.Future[int]()
 
     async def aclose(self) -> None:
-        """函数契约说明.
-
-        功能: 执行 aclose 的异步逻辑,并产出 closed。
-        参数: self 表示当前实例。
-        契约: 异步调用。 返回 `None`。
-        """
 
         self.closed = True
 
 
 def _config(*, max_blocks: int | None = None) -> StreamingRuntimeConfig:
-    """函数契约说明.
-
-    功能: 执行 _config 的同步逻辑,并协调
-    StreamingRuntimeConfig, RtpEndpoint,
-    RtpPort。
-    参数: max_blocks: int | None。 可省略。
-    契约: 同步调用。 返回
-    `StreamingRuntimeConfig`。
-    """
 
     return StreamingRuntimeConfig(
         stream_id="mic-primary",
@@ -274,14 +142,6 @@ def _config(*, max_blocks: int | None = None) -> StreamingRuntimeConfig:
 def test_runtime_waits_for_source_ready_before_first_rtp_packet() -> None:
     # Given: an unready route and one complete PortAudio-sized capture block.
 
-    """函数契约说明.
-
-    功能: 验证 runtime waits for source
-    ready before first rtp packet
-    的回归场景和可观察结果。
-    参数: 无显式业务参数。
-    契约: 同步调用。 返回 `None`。
-    """
 
     capture = FakeCapture(blocks=[b"\x01\x02" * 320, None])
 
@@ -314,13 +174,6 @@ def test_runtime_waits_for_source_ready_before_first_rtp_packet() -> None:
 def test_runtime_packetizes_one_rtp_frame_per_capture_block() -> None:
     # Given: two complete, distinguishable 320-sample capture blocks.
 
-    """函数契约说明.
-
-    功能: 验证 runtime packetizes one rtp
-    frame per capture block 的回归场景和可观察结果。
-    参数: 无显式业务参数。
-    契约: 同步调用。 返回 `None`。
-    """
 
     first = b"\x10\x20" * 320
 
@@ -350,14 +203,6 @@ def test_runtime_packetizes_one_rtp_frame_per_capture_block() -> None:
 
 @pytest.mark.parametrize("block", [b"\x10\x20" * 319, b"\x10\x20" * 321])
 def test_runtime_rejects_capture_blocks_that_are_not_exactly_20ms(block: bytes) -> None:
-    """函数契约说明.
-
-    功能: 验证 runtime rejects capture
-    blocks that are not exactly 20ms
-    的回归场景和可观察结果。
-    参数: block: bytes。 必填。
-    契约: 同步调用。 返回 `None`。
-    """
 
     capture = FakeCapture(blocks=[block])
 
@@ -378,14 +223,6 @@ def test_runtime_rejects_capture_blocks_that_are_not_exactly_20ms(block: bytes) 
 def test_runtime_streams_until_capture_ends_when_block_limit_is_unset() -> None:
     # Given: continuous mode and two capture blocks followed by an end-of-capture signal.
 
-    """函数契约说明.
-
-    功能: 验证 runtime streams until capture
-    ends when block limit is unset
-    的回归场景和可观察结果。
-    参数: 无显式业务参数。
-    契约: 同步调用。 返回 `None`。
-    """
 
     capture = FakeCapture(blocks=[b"\x00\x01" * 320, b"\x02\x03" * 320, None])
 
@@ -407,13 +244,6 @@ def test_runtime_streams_until_capture_ends_when_block_limit_is_unset() -> None:
 def test_runtime_cancellation_closes_capture_control_and_udp() -> None:
     # Given: a continuous capture blocked in its next read.
 
-    """函数契约说明.
-
-    功能: 验证 runtime cancellation closes
-    capture control and udp 的回归场景和可观察结果。
-    参数: 无显式业务参数。
-    契约: 同步调用。 可能等待 I/O 或协程结果。 返回 `None`。
-    """
 
     capture = BlockingCapture()
 
@@ -422,15 +252,6 @@ def test_runtime_cancellation_closes_capture_control_and_udp() -> None:
     control = FakeControl(capture=capture, udp=udp)
 
     async def cancel_running_stream() -> None:
-        """函数契约说明.
-
-        功能: 执行 cancel_running_stream
-        的异步逻辑,并协调 create_task, cancel,
-        run, wait。
-        参数: 无显式业务参数。
-        契约: 异步调用。 可能等待 I/O 或协程结果。 返回
-        `None`。
-        """
 
         task = asyncio.create_task(
             StreamRuntime(_config(), StreamResources(capture, control, udp)).run()
@@ -459,14 +280,6 @@ def test_runtime_cancellation_closes_capture_control_and_udp() -> None:
 def test_stream_config_requires_wss_except_for_explicit_loopback_ws() -> None:
     # Given: a deployable route with all required Mic stream configuration.
 
-    """函数契约说明.
-
-    功能: 验证 stream config requires wss
-    except for explicit loopback ws
-    的回归场景和可观察结果。
-    参数: 无显式业务参数。
-    契约: 同步调用。 返回 `None`。
-    """
 
     base_environment = {
         "ORCHESTRATOR_WS_URL": "ws://127.0.0.1:8765/control",
