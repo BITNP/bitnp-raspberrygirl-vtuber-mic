@@ -11,9 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from mic.audio import AudioFrame, generate_sine_wav, read_wav_audio
-from mic.config import load_config
-from mic.orchestrator_ws import OrchestratorWebSocketBoundary
+from mic.audio import generate_sine_wav, read_wav_audio
 from mic.portaudio_capture import CaptureDevice, PortAudioCaptureSource
 
 MIC_WAV_ENV = "BITNP_REAL_MIC_WAV_PATH"
@@ -23,54 +21,6 @@ FAKE_LOCAL_ENV = "BITNP_REAL_ADAPTER_FAKE_LOCAL"
 MALFORMED_ENV = "BITNP_REAL_ADAPTER_MALFORMED_CHECK"
 
 CAPTURE_DEVICE_ENV = "BITNP_CAPTURE_DEVICE"
-
-
-class LiveCaptureOrchestrator:
-    """类契约说明.
-
-    职责: 定义 LiveCaptureOrchestrator
-    的状态、行为和对外协作边界。
-    契约: 方法: __init__、receive_rtp_packet、
-    receive_audio_frame。
-    """
-
-    def __init__(self) -> None:
-        """函数契约说明.
-
-        功能: 初始化 LiveCaptureOrchestrator
-        的字段并建立实例不变式。
-        参数: self 表示当前实例。
-        契约: 同步调用。 返回 `None`。
-        """
-
-        self.rtp_packets: list[bytes] = []
-
-    def receive_rtp_packet(self, packet: bytes) -> None:
-        """函数契约说明.
-
-        功能: 执行 receive_rtp_packet
-        的同步逻辑,并协调 append。
-        参数: self 表示当前实例。 packet: bytes。
-        必填。
-        契约: 同步调用。 返回 `None`。
-        """
-
-        self.rtp_packets.append(packet)
-
-    def receive_audio_frame(self, frame: AudioFrame) -> None:
-        """函数契约说明.
-
-        功能: 执行 receive_audio_frame
-        的同步逻辑,并协调 AssertionError。
-        参数: self 表示当前实例。 frame:
-        AudioFrame。 必填。
-        契约: 同步调用。 返回 `None`。 可能抛出
-        AssertionError。
-        """
-
-        raise AssertionError(
-            f"expected RTP delivery, received raw frame {frame.metadata.seq}"
-        )
 
 
 @pytest.mark.real_adapter
@@ -129,7 +79,7 @@ def test_live_microphone_malformed_capture_reports_contract_error(
 
 
 @pytest.mark.real_adapter
-def test_portaudio_capture_emits_one_rtp_packet_when_explicit_device_is_configured() -> (
+def test_portaudio_capture_reads_one_frame_when_explicit_device_is_configured() -> (
     None
 ):
     # Given: an explicitly selected PortAudio capture device.
@@ -150,27 +100,15 @@ def test_portaudio_capture_emits_one_rtp_packet_when_explicit_device_is_configur
 
     device: CaptureDevice = int(raw_device) if raw_device.isdecimal() else raw_device
 
-    boundary = OrchestratorWebSocketBoundary(
-        load_config({"ORCHESTRATOR_WS_URL": "ws://orchestrator.local/ws"})
-    )
-
-    boundary.start_rtp_stream(stream_id="portaudio-smoke", start_rtp_timestamp=0)
-
-    orchestrator = LiveCaptureOrchestrator()
-
     # When: the real PortAudio adapter captures one fixed audio frame.
 
-    frame = PortAudioCaptureSource(device=device).capture_and_send(
-        boundary, orchestrator
-    )
+    frame = PortAudioCaptureSource(device=device).capture_one()
 
-    # Then: capture produces one complete frame and one in-memory RTP packet.
+    # Then: capture produces one complete PCM16 frame.
 
     assert frame is not None
 
     assert len(frame.payload) == 640
-
-    assert len(orchestrator.rtp_packets) == 1
 
 
 def _mic_wav_path_or_skip(tmp_path: Path) -> Path:

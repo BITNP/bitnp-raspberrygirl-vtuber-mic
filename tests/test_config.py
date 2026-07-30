@@ -8,7 +8,7 @@ from collections.abc import Mapping
 
 import pytest
 
-from mic.config import ConfigError, load_config
+from mic.config import ConfigError, PEER_WS_URL_KEYS, load_config
 
 
 def test_load_config_targets_orchestrator_when_required_url_present() -> None:
@@ -28,7 +28,8 @@ def test_load_config_targets_orchestrator_when_required_url_present() -> None:
     assert config.orchestrator_ws_url == "ws://orchestrator.local/ws"
 
 
-def test_load_config_rejects_peer_endpoint_when_asr_url_is_present() -> None:
+@pytest.mark.parametrize("peer_url_key", PEER_WS_URL_KEYS)
+def test_load_config_rejects_every_peer_websocket_url(peer_url_key: str) -> None:
     """函数契约说明.
 
     功能: 验证 load config rejects peer
@@ -40,10 +41,10 @@ def test_load_config_rejects_peer_endpoint_when_asr_url_is_present() -> None:
 
     env: Mapping[str, str] = {
         "ORCHESTRATOR_WS_URL": "ws://orchestrator.local/ws",
-        "ASR_WS_URL": "ws://asr.local/ws",
+        peer_url_key: "ws://peer.local/ws",
     }
 
-    with pytest.raises(ConfigError, match="ASR_WS_URL"):
+    with pytest.raises(ConfigError, match=peer_url_key):
         load_config(env)
 
 

@@ -1,228 +1,70 @@
-"""模块契约说明.
-
-职责: 为测试场景提供断言、夹具和回归用例。
-契约: 模块只提供注释所描述的公开入口,不在文档更新中改变运行时行为。
-"""
-
-from dataclasses import dataclass, field
-from pathlib import Path
-
-import pytest
-
-from mic.audio import AudioFrame, SineWaveSpec, generate_sine_wav, replay_wav
-from mic.config import load_config
-from mic.orchestrator_ws import OrchestratorWebSocketBoundary
-
-
-@dataclass(slots=True)
-class FakeRtpOrchestrator:
-    """类契约说明.
-
-    职责: 保存 FakeRtpOrchestrator
-    不可变数据结构,用类型标注表达字段契约。
-    契约: 字段: rtp_packets、audio_frames。
-    方法: receive_rtp_packet、receive_audio
-    _frame。
-    """
-
-    rtp_packets: list[bytes] = field(default_factory=list)
-
-    audio_frames: list[AudioFrame] = field(default_factory=list)
-
-    def receive_rtp_packet(self, packet: bytes) -> None:
-        """函数契约说明.
-
-        功能: 执行 receive_rtp_packet
-        的同步逻辑,并协调 append。
-        参数: self 表示当前实例。 packet: bytes。
-        必填。
-        契约: 同步调用。 返回 `None`。
-        """
-
-        self.rtp_packets.append(packet)
-
-    def receive_audio_frame(self, frame: AudioFrame) -> None:
-        """函数契约说明.
-
-        功能: 执行 receive_audio_frame
-        的同步逻辑,并协调 append。
-        参数: self 表示当前实例。 frame:
-        AudioFrame。 必填。
-        契约: 同步调用。 返回 `None`。
-        """
-
-        self.audio_frames.append(frame)
-
-
-def rtp_packet(version: int, payload_type: int, payload: bytes) -> bytes:
-    """函数契约说明.
-
-    功能: 执行 rtp_packet 的同步逻辑,并协调 bytes。
-    参数: version: int。 必填。 payload_type:
-    int。 必填。 payload: bytes。 必填。
-    契约: 同步调用。 返回 `bytes`。
-    """
-
-    return (
-        bytes([version << 6, payload_type, 0, 1, 0, 0, 125, 0, 16, 32, 48, 64])
-        + payload
-    )
-
-
-def test_replay_wav_packetizes_pcm16_frames_as_l16_rtp_from_orchestrator_stream_command(
-    tmp_path: Path,
-) -> None:
-    # Given: two deterministic 20ms PCM16 replay frames and canonical stream control.
-
-    """函数契约说明.
-
-    功能: 验证 replay wav packetizes pcm16
-    frames as l16 rtp from orchestrator
-    stream command 的回归场景和可观察结果。
-    参数: tmp_path: Path。 必填。
-    契约: 同步调用。 返回 `None`。
-    """
-
-    fixture = tmp_path / "sine-16k-mono-40ms.wav"
-
-    generate_sine_wav(fixture, SineWaveSpec(duration_ms=40))
-
-    orchestrator = FakeRtpOrchestrator()
-
-    boundary = OrchestratorWebSocketBoundary(
-        load_config({"ORCHESTRATOR_WS_URL": "ws://orchestrator.local/ws"})
-    )
-
-    boundary.start_rtp_stream(stream_id="mic-primary", start_rtp_timestamp=32000)
-
-    # When: the mic service replays the fixture through its Orchestrator media boundary.
-
-    frames = replay_wav(fixture, boundary, orchestrator)
-
-    # Then: each 20ms frame is delivered as one L16 RTP/AVP packet with a fixed header.
-
-    assert len(orchestrator.rtp_packets) == 2
-
-    assert all(len(packet) == 12 + 640 for packet in orchestrator.rtp_packets)
-
-    assert all(packet[0] == 0x80 for packet in orchestrator.rtp_packets)
-
-    assert all(packet[1] == 96 for packet in orchestrator.rtp_packets)
-
-    sequences = [
-        int.from_bytes(packet[2:4], byteorder="big")
-        for packet in orchestrator.rtp_packets
-    ]
-
-    assert sequences[1] == (sequences[0] + 1) % (1 << 16)
-
-    timestamps = [
-        int.from_bytes(packet[4:8], byteorder="big")
-        for packet in orchestrator.rtp_packets
-    ]
-
-    assert timestamps == [32000, 32320]
-
-    ssrcs = [
-        int.from_bytes(packet[8:12], byteorder="big")
-        for packet in orchestrator.rtp_packets
-    ]
-
-    assert len(set(ssrcs)) == 1
-
-    assert ssrcs[0] != 0
-
-    assert [packet[12:] for packet in orchestrator.rtp_packets] == [
-        b"".join(
-            frame.payload[index : index + 2][::-1]
-            for index in range(0, len(frame.payload), 2)
-        )
-        for frame in frames
-    ]
-
-
-@pytest.mark.parametrize(
-    "packet",
-    [
-        rtp_packet(version=1, payload_type=96, payload=b"\x00" * 640),
-        rtp_packet(version=2, payload_type=97, payload=b"\x00" * 640),
-        rtp_packet(version=2, payload_type=96, payload=b"\x00" * 639),
-    ],
-    ids=["wrong_version", "wrong_payload_type", "unaligned_l16_payload"],
+from mic.rtp import (
+    L16_FRAME_BYTES,
+    MIC_RTP_SSRC,
+    RtpPacket,
+    RtpPacketRejected,
+    RtpSequence,
+    RtpStream,
+    RtpTimestamp,
+    packetize_l16_pcm16le,
+    parse_l16_rtp_packet,
 )
-def test_rtp_boundary_rejects_invalid_l16_packets_without_delivery(
-    packet: bytes,
-) -> None:
-    # Given: an RTP packet that violates the L16 RTP media contract.
 
-    """函数契约说明.
 
-    功能: 验证 rtp boundary rejects invalid
-    l16 packets without delivery
-    的回归场景和可观察结果。
-    参数: packet: bytes。 必填。
-    契约: 同步调用。 返回 `None`。
-    """
-
-    orchestrator = FakeRtpOrchestrator()
-
-    boundary = OrchestratorWebSocketBoundary(
-        load_config({"ORCHESTRATOR_WS_URL": "ws://orchestrator.local/ws"})
+def test_packetize_l16_pcm16le_preserves_fixed_frame_order_and_advances_clock() -> None:
+    # Given: one canonical 20 ms PCM16LE frame and a configured Mic RTP stream.
+    payload = b"\x10\x20" * 320
+    stream = RtpStream(
+        stream_id="mic-primary",
+        sequence=RtpSequence(7),
+        timestamp=RtpTimestamp(32_000),
+        ssrc=MIC_RTP_SSRC,
     )
 
-    # When: the media boundary attempts to deliver the malformed RTP packet.
+    # When: the pure RTP adapter packetizes the frame.
+    packet, next_stream = packetize_l16_pcm16le(payload, stream)
 
-    delivered = boundary.deliver_rtp_packet(orchestrator, packet)
-
-    # Then: it rejects the packet before it reaches Orchestrator.
-
-    assert delivered is False
-
-    assert orchestrator.rtp_packets == []
+    # Then: the packet is fixed V2/PT96/L16 and the stream advances by one 20 ms frame.
+    assert packet[:12] == b"\x80\x60\x00\x07\x00\x00}\x00MIC1"
+    assert packet[12:] == b"\x20\x10" * 320
+    assert next_stream.sequence == RtpSequence(8)
+    assert next_stream.timestamp == RtpTimestamp(32_320)
 
 
-def test_rtp_packetization_preserves_replay_frame_order_and_20ms_boundaries(
-    tmp_path: Path,
-) -> None:
-    # Given: three deterministic 20ms PCM16 replay frames and canonical stream control.
-
-    """函数契约说明.
-
-    功能: 验证 rtp packetization preserves
-    replay frame order and 20ms
-    boundaries 的回归场景和可观察结果。
-    参数: tmp_path: Path。 必填。
-    契约: 同步调用。 返回 `None`。
-    """
-
-    fixture = tmp_path / "sine-16k-mono-60ms.wav"
-
-    generate_sine_wav(fixture, SineWaveSpec(duration_ms=60))
-
-    orchestrator = FakeRtpOrchestrator()
-
-    boundary = OrchestratorWebSocketBoundary(
-        load_config({"ORCHESTRATOR_WS_URL": "ws://orchestrator.local/ws"})
+def test_parse_l16_rtp_packet_rejects_invalid_fixed_frame() -> None:
+    # Given: a V2/PT96 packet whose payload is one byte short of the fixed L16 frame.
+    packet = b"\x80\x60\x00\x01\x00\x00}\x00MIC1" + b"\x00" * (
+        L16_FRAME_BYTES - 1
     )
 
-    boundary.start_rtp_stream(stream_id="mic-primary", start_rtp_timestamp=64000)
+    # When: the pure RTP boundary parses the packet.
+    parsed = parse_l16_rtp_packet(packet)
 
-    # When: replay frames cross the RTP media boundary.
+    # Then: malformed media cannot pass into the transport path.
+    assert parsed == RtpPacketRejected(
+        reason="RTP L16 payload must contain exactly one 20ms frame"
+    )
 
-    frames = replay_wav(fixture, boundary, orchestrator)
 
-    # Then: replay retains its existing ordering and one 20ms frame per RTP payload.
+def test_parse_l16_rtp_packet_accepts_canonical_packet() -> None:
+    # Given: a canonical RTP packet emitted from the pure packetizer.
+    packet, _next_stream = packetize_l16_pcm16le(
+        b"\x01\x02" * 320,
+        RtpStream(
+            stream_id="mic-primary",
+            sequence=RtpSequence(0),
+            timestamp=RtpTimestamp(0),
+            ssrc=MIC_RTP_SSRC,
+        ),
+    )
 
-    assert [frame.metadata.seq for frame in frames] == [1, 2, 3]
+    # When: the boundary parses the packet.
+    parsed = parse_l16_rtp_packet(packet)
 
-    assert [frame.metadata.duration_ms for frame in frames] == [20, 20, 20]
-
-    assert [len(frame.payload) for frame in frames] == [640, 640, 640]
-
-    assert [packet[12:] for packet in orchestrator.rtp_packets] == [
-        b"".join(
-            frame.payload[index : index + 2][::-1]
-            for index in range(0, len(frame.payload), 2)
-        )
-        for frame in frames
-    ]
+    # Then: it returns the typed RTP packet with the one-frame L16 payload.
+    assert parsed == RtpPacket(
+        sequence=RtpSequence(0),
+        timestamp=RtpTimestamp(0),
+        ssrc=MIC_RTP_SSRC,
+        payload=b"\x02\x01" * 320,
+    )

@@ -16,8 +16,6 @@ from mic.audio import (
     generate_sine_wav,
     replay_wav,
 )
-from mic.config import load_config
-from mic.orchestrator_ws import OrchestratorWebSocketBoundary
 
 
 @dataclass(slots=True)
@@ -76,19 +74,13 @@ def test_replay_wav_emits_normalized_pcm16_mono_frames_when_fixture_matches_cont
 
     orchestrator = FakeOrchestrator()
 
-    boundary = OrchestratorWebSocketBoundary(
-        load_config({"ORCHESTRATOR_WS_URL": "ws://orchestrator.local/ws"})
-    )
+    # When: the audio adapter replays the fixture to a frame sink.
 
-    # When: the mic service replays the fixture through its Orchestrator boundary.
+    frames = replay_wav(fixture, orchestrator)
 
-    frames = replay_wav(fixture, boundary, orchestrator)
-
-    # Then: every frame carries normalized metadata and binary payloads only to Orchestrator.
+    # Then: every frame carries normalized metadata and binary payloads to the sink.
 
     assert frames == orchestrator.frames
-
-    assert boundary.target_url() == "ws://orchestrator.local/ws"
 
     assert len(frames) == 50
 
@@ -130,15 +122,11 @@ def test_replay_wav_rejects_nonconforming_stereo_fixture_with_observed_metadata(
 
     orchestrator = FakeOrchestrator()
 
-    boundary = OrchestratorWebSocketBoundary(
-        load_config({"ORCHESTRATOR_WS_URL": "ws://orchestrator.local/ws"})
-    )
-
-    # When/Then: replay rejects it with explicit observed metadata and sends no payload.
+    # When/Then: replay rejects it with explicit observed metadata and sends no frame.
 
     with pytest.raises(
         AudioContractError, match="sample_rate=44100 channels=2 codec=pcm_s16le"
     ):
-        replay_wav(fixture, boundary, orchestrator)
+        replay_wav(fixture, orchestrator)
 
     assert orchestrator.frames == []

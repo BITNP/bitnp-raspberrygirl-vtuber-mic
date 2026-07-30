@@ -122,48 +122,6 @@ class AudioFrameSink(Protocol):
         ...
 
 
-class AudioRtpSink(AudioFrameSink, Protocol):
-    """类契约说明.
-
-    职责: 声明 AudioRtpSink
-    协议接口,约束实现方必须提供的行为。
-    契约: 方法: receive_rtp_packet。
-    """
-
-    def receive_rtp_packet(self, packet: bytes) -> None:
-        """函数契约说明.
-
-        功能: 执行 receive_rtp_packet
-        的同步逻辑,并维持签名契约。
-        参数: self 表示当前实例。 packet: bytes。
-        必填。
-        契约: 同步调用。 返回 `None`。
-        """
-
-        ...
-
-
-class AudioFrameBoundary(Protocol):
-    """类契约说明.
-
-    职责: 声明 AudioFrameBoundary
-    协议接口,约束实现方必须提供的行为。
-    契约: 方法: send_audio_frame。
-    """
-
-    def send_audio_frame(self, sink: AudioRtpSink, frame: AudioFrame) -> None:
-        """函数契约说明.
-
-        功能: 发送协议消息或媒体数据。
-        参数: self 表示当前实例。 sink:
-        AudioRtpSink。 必填。 frame:
-        AudioFrame。 必填。
-        契约: 同步调用。 返回 `None`。
-        """
-
-        ...
-
-
 @dataclass(frozen=True, slots=True)
 class SineWaveSpec:
     """类契约说明.
@@ -241,17 +199,14 @@ def generate_sine_wav(path: Path, spec: SineWaveSpec = DEFAULT_SINE_WAVE_SPEC) -
         wav_file.writeframes(bytes(frames))
 
 
-def replay_wav(
-    path: Path, boundary: AudioFrameBoundary, sink: AudioRtpSink
-) -> list[AudioFrame]:
+def replay_wav(path: Path, sink: AudioFrameSink) -> list[AudioFrame]:
     """函数契约说明.
 
     功能: 执行 replay_wav 的同步逻辑,并协调
-    read_wav_audio, list, chunk_audio,
-    send_audio_frame。
-    参数: path: Path。 必填。 boundary:
-    AudioFrameBoundary。 必填。 sink:
-    AudioRtpSink。 必填。
+    read_wav_audio、list、chunk_audio、
+    receive_audio_frame。
+    参数: path: Path。 必填。 sink:
+    AudioFrameSink。 必填。
     契约: 同步调用。 返回 `list[AudioFrame]`。
     """
 
@@ -260,7 +215,7 @@ def replay_wav(
     frames = list(chunk_audio(audio, DEFAULT_CHUNK_DURATION_MS))
 
     for frame in frames:
-        boundary.send_audio_frame(sink, frame)
+        sink.receive_audio_frame(frame)
 
     return frames
 

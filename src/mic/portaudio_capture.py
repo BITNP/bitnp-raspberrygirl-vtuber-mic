@@ -19,9 +19,7 @@ from mic.audio import (
     PCM16_MONO_CHANNELS,
     PCM16_MONO_SAMPLE_RATE,
     AudioFrame,
-    AudioFrameBoundary,
     AudioMetadata,
-    AudioRtpSink,
     ByteLength,
     FrameSeq,
 )
@@ -222,9 +220,8 @@ class _SounddeviceRawInputStream:
 class PortAudioCaptureSource:
     """类契约说明.
 
-    职责: 定义 PortAudioCaptureSource
-    的状态、行为和对外协作边界。
-    契约: 方法: __init__、capture_and_send。
+    职责: 读取一个规范化的 PortAudio 音频帧。
+    契约: 方法: __init__、capture_one。
     """
 
     __slots__ = ("_byteorder", "_device", "_stream_factory")
@@ -253,18 +250,13 @@ class PortAudioCaptureSource:
 
         self._byteorder: HostByteOrder = byteorder
 
-    def capture_and_send(
-        self, boundary: AudioFrameBoundary, sink: AudioRtpSink
-    ) -> AudioFrame | None:
+    def capture_one(self) -> AudioFrame | None:
         """函数契约说明.
 
-        功能: 执行 capture_and_send
-        的同步逻辑,并协调 _normalize_pcm16le,
-        AudioFrame, send_audio_frame,
-        _stream_factory。
-        参数: self 表示当前实例。 boundary:
-        AudioFrameBoundary。 必填。 sink:
-        AudioRtpSink。 必填。
+        功能: 执行 capture_one
+        的同步逻辑,并协调 _normalize_pcm16le、
+        AudioFrame、_stream_factory。
+        参数: self 表示当前实例。
         契约: 同步调用。 返回 `AudioFrame |
         None`。
         """
@@ -288,8 +280,6 @@ class PortAudioCaptureSource:
             ),
             payload=canonical_payload,
         )
-
-        boundary.send_audio_frame(sink, frame)
 
         return frame
 

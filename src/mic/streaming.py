@@ -14,10 +14,10 @@ from typing import Final, NewType, Protocol
 from urllib.parse import urlparse
 
 from mic.config import ConfigError, ServiceConfig, load_config
-from mic.orchestrator_ws import MIC_RTP_SSRC
 from mic.portaudio_capture import CaptureDevice
 from mic.rtp import (
     L16_FRAME_BYTES,
+    MIC_RTP_SSRC,
     RtpSequence,
     RtpStream,
     RtpTimestamp,

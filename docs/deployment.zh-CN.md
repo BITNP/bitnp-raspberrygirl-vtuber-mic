@@ -6,4 +6,4 @@
 
 实时采集使用 `sounddevice` 和 PortAudio。部署前运行 `uv sync --locked`。在 Windows 和 macOS 上，允许运行 `mic-stream` 的进程访问麦克风。在 Linux 上，安装发行版提供的 PortAudio 运行时，并授予服务账户录音权限。不设置 `BITNP_CAPTURE_DEVICE` 或将其设为 `default` 时使用主机默认输入，也可使用可用设备的索引或名称查询。
 
-使用 `uv run mic-stream` 启动运行时。它先绑定 UDP，再发送经认证的 `media.rtp.source.register` 控制事件，等待匹配的 `media.rtp.source.ready` 事件，然后为每个完整的 16 kHz 单声道采集块向 Orchestrator 发送一个 V2/PT96/L16 RTP 数据包。每个数据包包含 320 个采样，即 20 ms 的 L16 音频。验证真实部署时，应在 Orchestrator 侧确认 WSS Bearer 认证成功，已注册的流和 SSRC 收到 `media.rtp.source.ready`，并且配置的 UDP 接入端点收到 RTP 帧。Mic 没有现场策略设置，也绝不直接连接 Sound。`mic-capture` 只是本地标准输出诊断工具。
+使用 `uv run mic-stream` 启动运行时。它先绑定 UDP，再发送经认证的 `media.rtp.source.register` 控制事件，等待匹配的 `media.rtp.source.ready` 事件，然后为每个完整的 16 kHz 单声道采集块向 Orchestrator 发送一个 V2/PT96/L16 RTP 数据包。每个数据包包含 320 个采样，即 20 ms 的 L16 音频。验证真实部署时，应在 Orchestrator 侧确认 WSS Bearer 认证成功，已注册的流和 SSRC 收到 `media.rtp.source.ready`，并且配置的 UDP 接入端点收到 RTP 帧。Mic 没有现场策略设置，也绝不直接连接 Sound。

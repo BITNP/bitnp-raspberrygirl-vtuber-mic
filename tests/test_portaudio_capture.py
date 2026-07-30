@@ -10,9 +10,6 @@ from typing import Self
 
 import pytest
 
-from mic.audio import AudioFrame
-from mic.config import load_config
-from mic.orchestrator_ws import OrchestratorWebSocketBoundary
 from mic.portaudio_capture import CaptureDevice, PortAudioCaptureSource, RawInputStream
 
 
@@ -119,70 +116,10 @@ class FakeRawInputStreamFactory:
         return self.stream
 
 
-@dataclass(slots=True)
-class FakeRtpOrchestrator:
-    """类契约说明.
-
-    职责: 保存 FakeRtpOrchestrator
-    不可变数据结构,用类型标注表达字段契约。
-    契约: 字段: rtp_packets、audio_frames。
-    方法: receive_rtp_packet、receive_audio
-    _frame。
-    """
-
-    rtp_packets: list[bytes] = field(default_factory=list)
-
-    audio_frames: list[AudioFrame] = field(default_factory=list)
-
-    def receive_rtp_packet(self, packet: bytes) -> None:
-        """函数契约说明.
-
-        功能: 执行 receive_rtp_packet
-        的同步逻辑,并协调 append。
-        参数: self 表示当前实例。 packet: bytes。
-        必填。
-        契约: 同步调用。 返回 `None`。
-        """
-
-        self.rtp_packets.append(packet)
-
-    def receive_audio_frame(self, frame: AudioFrame) -> None:
-        """函数契约说明.
-
-        功能: 执行 receive_audio_frame
-        的同步逻辑,并协调 append。
-        参数: self 表示当前实例。 frame:
-        AudioFrame。 必填。
-        契约: 同步调用。 返回 `None`。
-        """
-
-        self.audio_frames.append(frame)
-
-
-def _active_boundary() -> OrchestratorWebSocketBoundary:
-    """函数契约说明.
-
-    功能: 执行 _active_boundary 的同步逻辑,并协调
-    OrchestratorWebSocketBoundary,
-    start_rtp_stream, load_config。
-    参数: 无显式业务参数。
-    契约: 同步调用。 返回
-    `OrchestratorWebSocketBoundary`。
-    """
-
-    boundary = OrchestratorWebSocketBoundary(
-        load_config({"ORCHESTRATOR_WS_URL": "ws://orchestrator.local/ws"})
-    )
-
-    boundary.start_rtp_stream(stream_id="mic-primary", start_rtp_timestamp=32000)
-
-    return boundary
-
-
-def test_capture_forwards_one_exact_pcm16le_frame_as_rtp_when_stream_returns_one_block() -> (
+def test_capture_returns_one_exact_pcm16le_frame_when_stream_returns_one_block() -> (
     None
 ):
-    # Given: a stream yields exactly one 20 ms PCM16 mono block and RTP stream control exists.
+    # Given: a stream yields exactly one 20 ms PCM16 mono block.
 
     """函数契约说明.
 
@@ -201,13 +138,11 @@ def test_capture_forwards_one_exact_pcm16le_frame_as_rtp_when_stream_returns_one
 
     source = PortAudioCaptureSource(device="Microphone", stream_factory=factory)
 
-    orchestrator = FakeRtpOrchestrator()
+    # When: the source captures one fixed-size block.
 
-    # When: the source captures and forwards one fixed-size block.
+    frame = source.capture_one()
 
-    frame = source.capture_and_send(_active_boundary(), orchestrator)
-
-    # Then: it requests 320 samples, sends one L16 RTP packet, and closes the stream.
+    # Then: it requests 320 samples and closes the stream.
 
     assert frame is not None
 
@@ -218,12 +153,6 @@ def test_capture_forwards_one_exact_pcm16le_frame_as_rtp_when_stream_returns_one
     assert factory.devices == ["Microphone"]
 
     assert stream.read_sizes == [320]
-
-    assert [packet[12:] for packet in orchestrator.rtp_packets] == [
-        b"".join(
-            payload[index : index + 2][::-1] for index in range(0, len(payload), 2)
-        )
-    ]
 
     assert stream.entered is True
 
@@ -248,17 +177,13 @@ def test_capture_rejects_short_stream_read_without_rtp_delivery() -> None:
         device=None, stream_factory=FakeRawInputStreamFactory(stream=stream)
     )
 
-    orchestrator = FakeRtpOrchestrator()
-
     # When: capture receives the truncated read.
 
-    frame = source.capture_and_send(_active_boundary(), orchestrator)
+    frame = source.capture_one()
 
-    # Then: it returns no frame, emits no RTP, and releases the stream.
+    # Then: it returns no frame and releases the stream.
 
     assert frame is None
-
-    assert orchestrator.rtp_packets == []
 
     assert stream.exited is True
 
@@ -285,19 +210,15 @@ def test_capture_normalizes_big_endian_int16_bytes_before_packetization() -> Non
         byteorder="big",
     )
 
-    orchestrator = FakeRtpOrchestrator()
-
     # When: the source captures one frame.
 
-    frame = source.capture_and_send(_active_boundary(), orchestrator)
+    frame = source.capture_one()
 
-    # Then: frame payload is canonical PCM16LE and RTP payload remains L16 network order.
+    # Then: frame payload is canonical PCM16LE.
 
     assert frame is not None
 
     assert frame.payload == b"\x34\x12" * 320
-
-    assert orchestrator.rtp_packets[0][12:] == native_payload
 
 
 def test_capture_closes_stream_when_read_raises() -> None:
@@ -321,7 +242,7 @@ def test_capture_closes_stream_when_read_raises() -> None:
     # When / Then: the read error propagates after context-managed stream cleanup.
 
     with pytest.raises(RuntimeError, match="read failed"):
-        source.capture_and_send(_active_boundary(), FakeRtpOrchestrator())
+        source.capture_one()
 
     assert stream.entered is True
 

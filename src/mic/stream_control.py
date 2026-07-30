@@ -14,7 +14,7 @@ from uuid import uuid4
 from websockets.asyncio.client import connect
 
 from mic.config import ConfigError, ServiceConfig
-from mic.orchestrator_ws import MIC_RTP_SSRC
+from mic.rtp import MIC_RTP_SSRC
 from mic.streaming import SourceRegistration
 
 SCHEMA_VERSION: Final = "1.0.0"

@@ -4,7 +4,7 @@ Mic 是 Orchestrator-only 的 hub client。它不感知业务策略，也不持�
 
 ## 技术栈
 
-Python 3.12+、`uv`、`pytest`、`websockets` 和 `sounddevice`。命令入口为 `mic-health`、`mic-capture` 和 `mic-stream`。
+Python 3.12+、`uv`、`pytest`、`websockets` 和 `sounddevice`。命令入口为 `mic-health` 和 `mic-stream`。
 
 ## 架构与数据流
 
@@ -25,7 +25,6 @@ Mic 引用 Orchestrator 的 `schemas/protocol/envelope.schema.json` 和 `schemas
 - 必须先完成 source register/ready handshake，再发送媒体。
 - 必须保持 20 ms、640-byte L16 payload 的 RTP 封包边界。
 - 生产 WSS 必须携带可信局域网 bearer token。
-- `mic-capture` 是本地诊断，不建立部署媒体链路。
 
 ## 验证
 

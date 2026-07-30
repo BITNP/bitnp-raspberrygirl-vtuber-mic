@@ -35,6 +35,7 @@ PEER_WS_URL_KEYS: Final = (
     "COMMENTS_WS_URL",
     "TTS_WS_URL",
     "SOUND_WS_URL",
+    "FRONTEND_WS_URL",
 )
 
 DEFAULT_HEALTH_HOST: Final = HealthHost("127.0.0.1")

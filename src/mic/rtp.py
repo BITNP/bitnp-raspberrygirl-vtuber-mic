@@ -24,6 +24,8 @@ RTP_SAMPLES_PER_20MS_FRAME: Final = 320
 
 L16_FRAME_BYTES: Final = RTP_SAMPLES_PER_20MS_FRAME * 2
 
+MIC_RTP_SSRC: Final = RtpSsrc(0x4D494331)
+
 
 @dataclass(frozen=True, slots=True)
 class RtpStream:
