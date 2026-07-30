@@ -84,6 +84,10 @@ class FakeControl:
         assert self.udp.sent == []
         assert self.registrations == [registration]
 
+    async def wait_stop(self, registration: SourceRegistration) -> int:
+        _ = registration
+        return await asyncio.Future[int]()
+
     async def aclose(self) -> None:
         self.closed = True
 
@@ -133,6 +137,18 @@ def test_runtime_packetizes_one_rtp_frame_per_capture_block() -> None:
         b"\x80\x60\x00\x00\x00\x01\x77\x00MIC1" + b"\x20\x10" * 320,
         b"\x80\x60\x00\x01\x00\x01\x78\x40MIC1" + b"\x40\x30" * 320,
     ]
+
+
+@pytest.mark.parametrize("block", [b"\x10\x20" * 319, b"\x10\x20" * 321])
+def test_runtime_rejects_capture_blocks_that_are_not_exactly_20ms(block: bytes) -> None:
+    capture = FakeCapture(blocks=[block])
+    udp = FakeUdp()
+    control = FakeControl(capture=capture, udp=udp)
+
+    with pytest.raises(ConfigError, match="640"):
+        asyncio.run(StreamRuntime(_config(max_blocks=1), StreamResources(capture, control, udp)).run())
+
+    assert udp.sent == []
 
 
 def test_runtime_streams_until_capture_ends_when_block_limit_is_unset() -> None:

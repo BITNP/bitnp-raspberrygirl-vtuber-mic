@@ -8,7 +8,13 @@ from urllib.parse import urlparse
 from mic.config import ConfigError, ServiceConfig, load_config
 from mic.orchestrator_ws import MIC_RTP_SSRC
 from mic.portaudio_capture import CaptureDevice
-from mic.rtp import RtpSequence, RtpStream, RtpTimestamp, packetize_l16_pcm16le
+from mic.rtp import (
+    L16_FRAME_BYTES,
+    RtpSequence,
+    RtpStream,
+    RtpTimestamp,
+    packetize_l16_pcm16le,
+)
 
 RtpPort = NewType("RtpPort", int)
 
@@ -123,6 +129,11 @@ class StreamRuntime:
             block = await self._resources.capture.read_block()
             if block is None:
                 return
+            if len(block) != L16_FRAME_BYTES:
+                raise ConfigError(
+                    key="capture.block",
+                    reason="must contain exactly 640 PCM16 bytes",
+                )
             packet, stream = packetize_l16_pcm16le(block, stream)
             await self._resources.udp.send(packet, self._config.rtp_endpoint)
             sent_blocks += 1

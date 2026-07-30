@@ -9,6 +9,7 @@ RTP_VERSION_2_HEADER: Final = 0x80
 L16_PAYLOAD_TYPE: Final = 96
 RTP_HEADER_SIZE: Final = 12
 RTP_SAMPLES_PER_20MS_FRAME: Final = 320
+L16_FRAME_BYTES: Final = RTP_SAMPLES_PER_20MS_FRAME * 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,8 +66,8 @@ def parse_l16_rtp_packet(packet: bytes) -> RtpPacket | RtpPacketRejected:
     if ssrc == 0:
         return RtpPacketRejected(reason="RTP packet SSRC must be nonzero")
     payload = packet[RTP_HEADER_SIZE:]
-    if len(payload) % 2 != 0:
-        return RtpPacketRejected(reason="RTP L16 payload length must contain whole 16-bit samples")
+    if len(payload) != L16_FRAME_BYTES:
+        return RtpPacketRejected(reason="RTP L16 payload must contain exactly one 20ms frame")
     return RtpPacket(
         sequence=RtpSequence(int.from_bytes(packet[2:4], byteorder="big")),
         timestamp=RtpTimestamp(int.from_bytes(packet[4:8], byteorder="big")),
