@@ -1,6 +1,6 @@
 # Mic 开发者文档
 
-Mic 是 Orchestrator-only 的 hub client。它不感知业务策略，也不持有跨服务状态。
+Mic 是 Orchestrator-only 的 hub client。它不感知业务策略，也不持有跨服务状态。系统架构、部署编排和规范协议以 [Orchestrator 开发者文档](../../bitnp-raspberrygirl-vtuber-orchestrator/docs/developer.zh-CN.md) 为准；通过 `ORCHESTRATOR_REPO` 引用其 schema。
 
 ## 技术栈
 
@@ -26,12 +26,4 @@ Mic 引用 Orchestrator 的 `schemas/protocol/envelope.schema.json` 和 `schemas
 - 必须保持 20 ms、640-byte L16 payload 的 RTP 封包边界。
 - 生产 WSS 必须携带可信局域网 bearer token。
 
-## 验证
-
-```bash
-uv sync --locked
-uv run pytest
-ORCHESTRATOR_WS_URL=wss://orchestrator.example.test/control uv run mic-health
-```
-
-真实部署验证应在 Orchestrator 侧确认认证通过、`media.rtp.source.register` 被接受、ready 先于媒体到达，并且 UDP RTP 抵达配置的 ingress。
+本地安装、测试和健康检查见[用户文档](user.zh-CN.md)。真实部署验证应在 Orchestrator 侧确认认证通过、`media.rtp.source.register` 被接受、ready 先于媒体到达，并且 UDP RTP 抵达配置的 ingress。

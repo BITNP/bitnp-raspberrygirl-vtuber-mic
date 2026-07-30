@@ -4,9 +4,3 @@ Mic 是 Raspberry Girl 的策略无关麦克风模块。它只连接 Orchestrato
 
 - [用户文档](docs/user.zh-CN.md)
 - [开发者文档](docs/developer.zh-CN.md)
-- [English quickstart](docs/quickstart.en.md)
-- [快速开始](docs/quickstart.zh-CN.md)
-- [架构](docs/architecture.zh-CN.md)
-- [协议](docs/protocol.zh-CN.md)
-- [测试](docs/testing.zh-CN.md)
-- [部署](docs/deployment.zh-CN.md)
