@@ -1,5 +1,6 @@
-
 import asyncio  # noqa: ANYIO_OK - mic-stream requires asyncio UDP transport.
+import logging
+import os
 
 from mic.config import ConfigError
 from mic.portaudio_capture import PortAudioBlockCapture
@@ -40,5 +41,11 @@ async def run_stream() -> int:
 
 
 def main() -> int:
-
+    logging.basicConfig(
+        level=getattr(
+            logging, os.environ.get("BITNP_LOG_LEVEL", "INFO").upper(), logging.INFO
+        ),
+        format="%(asctime)s.%(msecs)03d %(levelname)s %(name)s %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%S",
+    )
     return asyncio.run(run_stream())

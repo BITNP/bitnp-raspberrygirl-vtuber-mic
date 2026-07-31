@@ -1,5 +1,5 @@
-
 import json
+import logging
 import ssl
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -23,45 +23,34 @@ SOURCE_REGISTER_EVENT: Final = "media.rtp.source.register"
 SOURCE_STOP_EVENT: Final = "media.rtp.source.stop"
 
 SOUND_FLUSH_EVENT: Final = "media.stream.flush"
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
 class ControlContext:
-
     trace_id: str
 
     session_id: str
 
 
 class ControlConnection(Protocol):
+    async def send(self, message: str) -> None: ...
 
-    async def send(self, message: str) -> None:
+    async def recv(self) -> str | bytes: ...
 
-        ...
-
-    async def recv(self) -> str | bytes:
-
-        ...
-
-    async def close(self) -> None:
-
-        ...
+    async def close(self) -> None: ...
 
 
 class ControlConnector(Protocol):
-
     async def connect(
         self,
         url: str,
         headers: dict[str, str],
         ssl_context: ssl.SSLContext | None,
-    ) -> ControlConnection:
-
-        ...
+    ) -> ControlConnection: ...
 
 
 class WebsocketsControlConnector:
-
     async def connect(
         self,
         url: str,
@@ -76,7 +65,6 @@ class WebsocketsControlConnector:
 
 
 class WebSocketStreamingControl:
-
     __slots__ = ("_connection", "_context", "_highest_stop_epochs")
 
     def __init__(self, connection: ControlConnection, context: ControlContext) -> None:
@@ -107,6 +95,11 @@ class WebSocketStreamingControl:
             service_config.orchestrator_ws_url,
             _authorization_header(service_config),
             tls_context,
+        )
+        _LOGGER.debug(
+            "mic_control_connected url=%s session=%s",
+            service_config.orchestrator_ws_url,
+            context.session_id,
         )
 
         return cls(connection, context)
@@ -140,10 +133,18 @@ class WebSocketStreamingControl:
         }
 
         await self._connection.send(json.dumps(event, separators=(",", ":")))
+        _LOGGER.debug(
+            "mic_control_sent event=%s stream=%s",
+            SOURCE_REGISTER_EVENT,
+            registration.stream_id,
+        )
 
     async def wait_source_ready(self, registration: SourceRegistration) -> None:
 
         raw_event = await self._connection.recv()
+        _LOGGER.debug(
+            "mic_control_received event=media.rtp.source.ready bytes=%d", len(raw_event)
+        )
 
         if not isinstance(raw_event, str):
             raise ConfigError(
@@ -181,6 +182,7 @@ class WebSocketStreamingControl:
 
         while True:
             raw_event = await self._connection.recv()
+            _LOGGER.debug("mic_control_received bytes=%d", len(raw_event))
 
             if not isinstance(raw_event, str):
                 raise ConfigError(
@@ -247,7 +249,7 @@ class WebSocketStreamingControl:
             return epoch
 
     async def aclose(self) -> None:
-
+        _LOGGER.debug("mic_control_closed session=%s", self._context.session_id)
         await self._connection.close()
 
 

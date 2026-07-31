@@ -1,5 +1,5 @@
-
 import asyncio  # noqa: ANYIO_OK - asyncio owns the required UDP transport.
+import logging
 import os
 from collections.abc import Mapping
 from contextlib import suppress
@@ -44,11 +44,11 @@ TRACE_ID_KEY: Final = "BITNP_TRACE_ID"
 SESSION_ID_KEY: Final = "BITNP_SESSION_ID"
 
 LOOPBACK_HOSTS: Final = frozenset({"127.0.0.1", "::1", "localhost"})
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
 class RtpEndpoint:
-
     host: str
 
     port: RtpPort
@@ -56,7 +56,6 @@ class RtpEndpoint:
 
 @dataclass(frozen=True, slots=True)
 class SourceRegistration:
-
     stream_id: str
 
     rtp_endpoint: RtpEndpoint
@@ -64,7 +63,6 @@ class SourceRegistration:
 
 @dataclass(frozen=True, slots=True)
 class StreamingRuntimeConfig:
-
     stream_id: str
 
     start_timestamp: int
@@ -86,64 +84,39 @@ class StreamingRuntimeConfig:
 
 @dataclass(frozen=True, slots=True)
 class UdpSenderStateError(RuntimeError):
-
     def __str__(self) -> str:
 
         return "UDP sender must bind before sending"
 
 
 class BlockCapture(Protocol):
+    async def open(self) -> None: ...
 
-    async def open(self) -> None:
+    async def read_block(self) -> bytes | None: ...
 
-        ...
-
-    async def read_block(self) -> bytes | None:
-
-        ...
-
-    async def aclose(self) -> None:
-
-        ...
+    async def aclose(self) -> None: ...
 
 
 class StreamingControl(Protocol):
+    async def register_source(self, registration: SourceRegistration) -> None: ...
 
-    async def register_source(self, registration: SourceRegistration) -> None:
+    async def wait_source_ready(self, registration: SourceRegistration) -> None: ...
 
-        ...
+    async def wait_stop(self, registration: SourceRegistration) -> int: ...
 
-    async def wait_source_ready(self, registration: SourceRegistration) -> None:
-
-        ...
-
-    async def wait_stop(self, registration: SourceRegistration) -> int:
-
-        ...
-
-    async def aclose(self) -> None:
-
-        ...
+    async def aclose(self) -> None: ...
 
 
 class UdpPacketSender(Protocol):
+    async def bind(self, endpoint: RtpEndpoint) -> None: ...
 
-    async def bind(self, endpoint: RtpEndpoint) -> None:
+    async def send(self, packet: bytes, endpoint: RtpEndpoint) -> None: ...
 
-        ...
-
-    async def send(self, packet: bytes, endpoint: RtpEndpoint) -> None:
-
-        ...
-
-    async def aclose(self) -> None:
-
-        ...
+    async def aclose(self) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
 class StreamResources:
-
     capture: BlockCapture
 
     control: StreamingControl
@@ -152,7 +125,6 @@ class StreamResources:
 
 
 class StreamRuntime:
-
     __slots__ = ("_config", "_resources")
 
     def __init__(
@@ -171,11 +143,26 @@ class StreamRuntime:
         )
 
         await self._resources.udp.bind(self._config.udp_bind_endpoint)
+        _LOGGER.debug(
+            "mic_rtp_bind host=%s port=%d",
+            self._config.udp_bind_endpoint.host,
+            self._config.udp_bind_endpoint.port,
+        )
 
         try:
             await self._resources.control.register_source(registration)
+            _LOGGER.debug(
+                "mic_control_sent event=media.rtp.source.register stream=%s rtp_host=%s rtp_port=%d",
+                registration.stream_id,
+                registration.rtp_endpoint.host,
+                registration.rtp_endpoint.port,
+            )
 
             await self._resources.control.wait_source_ready(registration)
+            _LOGGER.debug(
+                "mic_control_received event=media.rtp.source.ready stream=%s",
+                registration.stream_id,
+            )
 
             await self._resources.capture.open()
 
@@ -235,6 +222,11 @@ class StreamRuntime:
                 packet, stream = packetize_l16_pcm16le(block, stream)
 
                 await self._resources.udp.send(packet, self._config.rtp_endpoint)
+                _LOGGER.debug(
+                    "mic_rtp_sent stream=%s packet_bytes=%d",
+                    registration.stream_id,
+                    len(packet),
+                )
 
                 sent_blocks += 1
 
@@ -246,7 +238,6 @@ class StreamRuntime:
 
 
 class AsyncioUdpSender:
-
     __slots__ = ("_transport",)
 
     def __init__(self) -> None:
