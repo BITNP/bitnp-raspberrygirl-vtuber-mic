@@ -25,5 +25,6 @@ Mic 引用 Orchestrator 的 `schemas/protocol/envelope.schema.json` 和 `schemas
 - 必须先完成 source register/ready handshake，再发送媒体。
 - 必须保持 20 ms、640-byte L16 payload 的 RTP 封包边界。
 - 生产 WSS 必须携带可信局域网 bearer token。
+- 生产部署在 `ORCHESTRATOR_TLS_CA_PATH` 设置同一个只读 PEM CA bundle，用于校验 Orchestrator WSS 证书。该路径也由 Orchestrator、Sound、Comments 使用；主机系统信任库只是已安装相同 CA 时的可选替代。
 
 本地安装、测试和健康检查见[用户文档](user.zh-CN.md)。真实部署验证应在 Orchestrator 侧确认认证通过、`media.rtp.source.register` 被接受、ready 先于媒体到达，并且 UDP RTP 抵达配置的 ingress。
