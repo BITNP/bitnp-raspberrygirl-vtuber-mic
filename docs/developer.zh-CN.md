@@ -27,4 +27,4 @@ Mic 引用 Orchestrator 的 `schemas/protocol/envelope.schema.json` 和 `schemas
 - 生产 WSS 必须携带可信局域网 bearer token。
 - 生产部署在 `ORCHESTRATOR_TLS_CA_PATH` 设置同一个只读 PEM CA bundle，用于校验 Orchestrator WSS 证书。该路径也由 Orchestrator、Sound、Comments 使用；主机系统信任库只是已安装相同 CA 时的可选替代。
 
-本地安装、测试和健康检查见[用户文档](user.zh-CN.md)。真实部署验证应在 Orchestrator 侧确认认证通过、`media.rtp.source.register` 被接受、ready 先于媒体到达，并且 UDP RTP 抵达配置的 ingress。
+本地安装、测试和健康检查见[用户文档](user.zh-CN.md)。同机 `ws://` 回环联调必须同时设置 `MIC_ALLOW_LOOPBACK_WS=true`、使用 loopback URL，并清空 `TRUSTED_LAN_TOKEN`；集中步骤见[本机回环联调指南](../../bitnp-raspberrygirl-vtuber-orchestrator/docs/local-loopback.zh-CN.md)。真实部署验证应在 Orchestrator 侧确认认证通过、`media.rtp.source.register` 被接受、ready 先于媒体到达，并且 UDP RTP 抵达配置的 ingress。
