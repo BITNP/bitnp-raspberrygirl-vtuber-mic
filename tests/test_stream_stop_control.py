@@ -3,12 +3,18 @@ from __future__ import annotations
 
 import asyncio
 import json
+import ssl
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import pytest
 
-from mic.config import ConfigError
-from mic.stream_control import ControlContext, WebSocketStreamingControl
+from mic.config import ConfigError, OrchestratorWsUrl, ServiceConfig, TrustedLanToken
+from mic.stream_control import (
+    ControlContext,
+    WebsocketsControlConnector,
+    WebSocketStreamingControl,
+)
 from mic.streaming import (
     RtpEndpoint,
     RtpPort,
@@ -35,6 +41,38 @@ class _Connection:
     async def close(self) -> None:
 
         return
+
+
+@dataclass(slots=True)
+class _ControlConnector:
+
+    connection: _Connection
+
+    ssl_context: ssl.SSLContext | None = None
+
+    headers: dict[str, str] | None = None
+
+    async def connect(
+        self,
+        url: str,
+        headers: dict[str, str],
+        ssl_context: ssl.SSLContext | None,
+    ) -> _Connection:
+        assert url == "wss://orchestrator.example.test/control"
+
+        self.headers = headers
+
+        self.ssl_context = ssl_context
+
+        return self.connection
+
+
+@pytest.fixture
+def ca_path(tmp_path: Path) -> Path:
+    certificate = ssl.create_default_context().get_ca_certs(binary_form=True)[0]
+    path = tmp_path / "ca.pem"
+    _ = path.write_text(ssl.DER_cert_to_PEM_cert(certificate), encoding="ascii")
+    return path
 
 
 @dataclass(slots=True)
@@ -136,6 +174,118 @@ def test_websocket_control_rejects_malformed_or_foreign_stop() -> None:
 def test_websocket_control_rejects_duplicate_and_lower_stop_epochs() -> None:
 
     asyncio.run(_stale_epoch_proof())
+
+
+def test_websocket_control_open_passes_verified_ca_context_and_bearer_header_to_connector(
+    ca_path: Path,
+) -> None:
+    # Given: an authenticated WSS Mic control session with a configured CA bundle.
+
+
+    connector = _ControlConnector(_Connection(messages=[]))
+    config = ServiceConfig(
+        orchestrator_ws_url=OrchestratorWsUrl(
+            "wss://orchestrator.example.test/control"
+        ),
+        trusted_lan_token=TrustedLanToken("trusted-token"),
+        tls_ca_path=ca_path,
+    )
+
+    # When: Mic opens control through its connector contract.
+
+
+    asyncio.run(
+        WebSocketStreamingControl.open(
+            config, ControlContext("trace-001", "session-001"), connector=connector
+        )
+    )
+
+    # Then: the verified CA context and existing bearer header cross the seam together.
+
+
+    assert isinstance(connector.ssl_context, ssl.SSLContext)
+    assert connector.ssl_context.check_hostname is True
+    assert connector.ssl_context.verify_mode == ssl.CERT_REQUIRED
+    assert connector.headers == {"Authorization": "Bearer trusted-token"}
+
+
+def test_websockets_control_connector_passes_context_to_wss_connect(
+    monkeypatch: pytest.MonkeyPatch, ca_path: Path
+) -> None:
+    # Given: a verified CA context and the real Mic connector.
+
+
+    connection = _Connection(messages=[])
+    captured_context: ssl.SSLContext | None = None
+    captured_headers: dict[str, str] | None = None
+
+    async def open_connection(
+        url: str, *, additional_headers: dict[str, str], ssl: ssl.SSLContext
+    ) -> _Connection:
+        nonlocal captured_context, captured_headers
+        assert url == "wss://orchestrator.example.test/control"
+        captured_context = ssl
+        captured_headers = additional_headers
+        return connection
+
+    monkeypatch.setattr("mic.stream_control.connect", open_connection)
+    context = ssl.create_default_context()
+    context.load_verify_locations(cafile=str(ca_path))
+
+    # When: the production connector opens the secure route.
+
+
+    opened = asyncio.run(
+        WebsocketsControlConnector().connect(
+            "wss://orchestrator.example.test/control",
+            {"Authorization": "Bearer trusted-token"},
+            context,
+        )
+    )
+
+    # Then: the real websockets call receives the exact TLS context and header.
+
+
+    assert opened is connection
+    assert captured_context is context
+    assert captured_headers == {"Authorization": "Bearer trusted-token"}
+
+
+def test_websockets_control_connector_omits_ssl_for_ws_connect(
+    monkeypatch: pytest.MonkeyPatch, ca_path: Path
+) -> None:
+    # Given: a plaintext loopback route even though a caller supplies a CA context.
+
+
+    connection = _Connection(messages=[])
+    captured_headers: dict[str, str] | None = None
+
+    async def open_connection(
+        url: str, *, additional_headers: dict[str, str]
+    ) -> _Connection:
+        nonlocal captured_headers
+        assert url == "ws://127.0.0.1/control"
+        captured_headers = additional_headers
+        return connection
+
+    monkeypatch.setattr("mic.stream_control.connect", open_connection)
+    context = ssl.create_default_context()
+    context.load_verify_locations(cafile=str(ca_path))
+
+    # When: the production connector opens the plaintext route.
+
+
+    opened = asyncio.run(
+        WebsocketsControlConnector().connect(
+            "ws://127.0.0.1/control", {}, context
+        )
+    )
+
+    # Then: the real websockets call retains its pre-TLS argument shape.
+
+
+    assert opened is connection
+    assert captured_headers == {}
 
 
 async def _flush_epoch_proof() -> None:

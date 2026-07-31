@@ -1,8 +1,10 @@
 
 import json
+import ssl
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Final, Protocol
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from websockets.asyncio.client import connect
@@ -10,6 +12,7 @@ from websockets.asyncio.client import connect
 from mic.config import ConfigError, ServiceConfig
 from mic.rtp import MIC_RTP_SSRC
 from mic.streaming import SourceRegistration
+from mic.tls import build_tls_context
 
 SCHEMA_VERSION: Final = "1.0.0"
 
@@ -45,6 +48,33 @@ class ControlConnection(Protocol):
         ...
 
 
+class ControlConnector(Protocol):
+
+    async def connect(
+        self,
+        url: str,
+        headers: dict[str, str],
+        ssl_context: ssl.SSLContext | None,
+    ) -> ControlConnection:
+
+        ...
+
+
+class WebsocketsControlConnector:
+
+    async def connect(
+        self,
+        url: str,
+        headers: dict[str, str],
+        ssl_context: ssl.SSLContext | None,
+    ) -> ControlConnection:
+
+        if urlparse(url).scheme != "wss" or ssl_context is None:
+            return await connect(url, additional_headers=headers)
+
+        return await connect(url, additional_headers=headers, ssl=ssl_context)
+
+
 class WebSocketStreamingControl:
 
     __slots__ = ("_connection", "_context", "_highest_stop_epochs")
@@ -59,12 +89,24 @@ class WebSocketStreamingControl:
 
     @classmethod
     async def open(
-        cls, service_config: ServiceConfig, context: ControlContext
+        cls,
+        service_config: ServiceConfig,
+        context: ControlContext,
+        connector: ControlConnector | None = None,
     ) -> "WebSocketStreamingControl":
 
-        connection = await connect(
+        tls_context = (
+            build_tls_context(service_config.tls_ca_path)
+            if urlparse(service_config.orchestrator_ws_url).scheme == "wss"
+            else None
+        )
+        resolved_connector = (
+            WebsocketsControlConnector() if connector is None else connector
+        )
+        connection = await resolved_connector.connect(
             service_config.orchestrator_ws_url,
-            additional_headers=_authorization_header(service_config),
+            _authorization_header(service_config),
+            tls_context,
         )
 
         return cls(connection, context)
