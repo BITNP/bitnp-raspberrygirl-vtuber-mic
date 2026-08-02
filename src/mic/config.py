@@ -39,6 +39,8 @@ CAMPP_MODEL_REVISION_KEY: Final = "MIC_CAMPP_MODEL_REVISION"
 
 ZIPENHANCER_MODEL_PATH_KEY: Final = "MIC_ZIPENHANCER_MODEL_PATH"
 
+ZIPENHANCER_WINDOW_MS_KEY: Final = "MIC_ZIPENHANCER_WINDOW_MS"
+
 VAD_MODEL_PATH_KEY: Final = "MIC_VAD_MODEL_PATH"
 
 ASR_ENDPOINT_INCLUDES_VAD_KEY: Final = "MIC_ASR_ENDPOINT_INCLUDES_VAD"
@@ -55,6 +57,8 @@ PEER_WS_URL_KEYS: Final = (
 DEFAULT_HEALTH_HOST: Final = HealthHost("127.0.0.1")
 
 DEFAULT_HEALTH_PORT: Final = HealthPort(8010)
+
+DEFAULT_ZIPENHANCER_WINDOW_MS: Final = 500
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +98,8 @@ class ServiceConfig:
 
     zipenhancer_model_path: Path | None = None
 
+    zipenhancer_window_ms: int = DEFAULT_ZIPENHANCER_WINDOW_MS
+
     vad_model_path: Path | None = None
 
     asr_endpoint_includes_vad: bool = False
@@ -123,12 +129,33 @@ def load_config(env: Mapping[str, str] | None = None) -> ServiceConfig:
         zipenhancer_model_path=_parse_optional_path(
             source.get(ZIPENHANCER_MODEL_PATH_KEY)
         ),
+        zipenhancer_window_ms=_parse_zipenhancer_window_ms(
+            source.get(ZIPENHANCER_WINDOW_MS_KEY)
+        ),
         vad_model_path=_parse_optional_path(source.get(VAD_MODEL_PATH_KEY)),
         asr_endpoint_includes_vad=_parse_bool(
             source.get(ASR_ENDPOINT_INCLUDES_VAD_KEY),
             ASR_ENDPOINT_INCLUDES_VAD_KEY,
         ),
     )
+
+
+def _parse_zipenhancer_window_ms(raw_value: str | None) -> int:
+
+    if raw_value is None or raw_value.strip() == "":
+        return DEFAULT_ZIPENHANCER_WINDOW_MS
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise ConfigError(
+            key=ZIPENHANCER_WINDOW_MS_KEY, reason="must be an integer"
+        ) from exc
+    if value < 20 or value % 20:
+        raise ConfigError(
+            key=ZIPENHANCER_WINDOW_MS_KEY,
+            reason="must be a positive multiple of 20 ms",
+        )
+    return value
 
 
 def _reject_peer_urls(env: Mapping[str, str]) -> None:

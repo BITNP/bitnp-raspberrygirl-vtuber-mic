@@ -6,8 +6,13 @@ from mic.asr import OpenAICompatibleAsr
 from mic.asr_runtime import MicAsrEndpointProcessor
 from mic.camplusplus import CamPlusPlusOnnx
 from mic.config import ConfigError
+from mic.continuous_pipeline import run_continuous_pipeline
 from mic.portaudio_capture import PortAudioBlockCapture
-from mic.speech_models import SileroVadOnnx, ZipEnhancerOnnx
+from mic.speech_models import (
+    SileroVadOnnx,
+    ZipEnhancerOnnx,
+    ZipEnhancerStreamingProcessor,
+)
 from mic.stream_control import ControlContext, WebSocketStreamingControl
 from mic.streaming import load_streaming_runtime_config
 
@@ -52,11 +57,6 @@ async def run_stream() -> int:
             service_config.asr_api_key,
         ),
         camplusplus=camplusplus,
-        enhancer=(
-            None
-            if service_config.zipenhancer_model_path is None
-            else ZipEnhancerOnnx(service_config.zipenhancer_model_path)
-        ),
         vad=(
             None
             if service_config.asr_endpoint_includes_vad
@@ -69,12 +69,21 @@ async def run_stream() -> int:
     await control.register_input(config.stream_id)
     await capture.open()
     try:
-        timestamp = config.start_timestamp
-        while (block := await capture.read_block()) is not None:
-            await processor.push(block, timestamp)
-            timestamp = (timestamp + 320) % (1 << 32)
+        enhancer = (
+            None
+            if service_config.zipenhancer_model_path is None
+            else ZipEnhancerStreamingProcessor(
+                ZipEnhancerOnnx(service_config.zipenhancer_model_path),
+                window_ms=service_config.zipenhancer_window_ms,
+            )
+        )
+        await run_continuous_pipeline(
+            capture,
+            processor,
+            start_timestamp=config.start_timestamp,
+            enhancer=enhancer,
+        )
     finally:
-        await processor.flush()
         await capture.aclose()
         await control.aclose()
 

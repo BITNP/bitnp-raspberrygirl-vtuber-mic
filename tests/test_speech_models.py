@@ -4,7 +4,11 @@ import numpy
 import pytest
 
 from mic.config import ConfigError
-from mic.speech_models import SileroVadOnnx, ZipEnhancerOnnx
+from mic.speech_models import (
+    SileroVadOnnx,
+    ZipEnhancerOnnx,
+    ZipEnhancerStreamingProcessor,
+)
 
 
 class _Item:
@@ -53,6 +57,41 @@ def test_zipenhancer_rejects_nonofficial_model_inputs(monkeypatch) -> None:
         ZipEnhancerOnnx(Path("/controlled/other.onnx"))
 
 
+def test_zipenhancer_streaming_processor_emits_complete_windows_and_tail() -> None:
+    class Enhancer:
+        def __init__(self) -> None:
+            self.inputs: list[bytes] = []
+
+        def enhance(self, pcm16le: bytes) -> bytes:
+            self.inputs.append(pcm16le)
+            return pcm16le
+
+    enhancer = Enhancer()
+    processor = ZipEnhancerStreamingProcessor(enhancer, window_ms=40)  # type: ignore[arg-type]
+    first = bytes(640)
+    second = bytes(639) + b"\x01"
+    third = bytes(639) + b"\x02"
+
+    assert processor.push(first) == ()
+    assert processor.push(second) == (first, second)
+    assert processor.push(third) == ()
+    assert processor.flush() == (third,)
+    assert enhancer.inputs == [first + second, third]
+
+
+def test_zipenhancer_streaming_processor_fails_open_for_one_window(caplog) -> None:
+    class FailingEnhancer:
+        def enhance(self, pcm16le: bytes) -> bytes:
+            _ = pcm16le
+            raise RuntimeError("inference failed")
+
+    processor = ZipEnhancerStreamingProcessor(FailingEnhancer(), window_ms=20)  # type: ignore[arg-type]
+    source = bytes(640)
+
+    assert processor.push(source) == (source,)
+    assert "forwarding raw PCM" in caplog.text
+
+
 def test_silero_vad_sends_state_and_updates_it() -> None:
     class Session:
         def __init__(self) -> None:
@@ -66,7 +105,11 @@ def test_silero_vad_sends_state_and_updates_it() -> None:
 
     session = Session()
     vad = SileroVadOnnx(
-        session, "input", "state", "sr", numpy.zeros((2, 1, 128), dtype=numpy.float32)
+        session,  # pyright: ignore[reportArgumentType]
+        "input",
+        "state",
+        "sr",
+        numpy.zeros((2, 1, 128), dtype=numpy.float32),
     )
 
     probability = vad.speech_probability(bytes(1_024))

@@ -8,15 +8,15 @@ Python 3.12+、`uv`、`pytest`、`websockets` 和 `sounddevice`；ASR HTTP 调�
 
 ## 架构与数据流
 
-`mic-stream` 组合 PortAudio capture、可选 ZipEnhancer ONNX 降噪、Silero VAD ONNX、CAM++、OpenAI-compatible ASR 和 Orchestrator WSS control boundary。20 ms PCM16 块持续采集；Silero VAD 每 32 ms 推理一次并驱动本地端点检测。端点窗口的原始 PCM 只在 Mic 内存中保留到单次模型/ASR 请求完成。
+`mic-stream` 组合 PortAudio capture、可选 ZipEnhancer ONNX 降噪、Silero VAD ONNX、CAM++、OpenAI-compatible ASR 和 Orchestrator WSS control boundary。20 ms PCM16 块持续采集；ZipEnhancer 在独立的、默认 500 ms 的有界窗口中串行增强，输出的 20 ms 帧才进入 Silero VAD。Silero VAD 每 32 ms 推理一次并驱动本地端点检测；端点只结束当前 ASR 段，不能停止采集。
 
-ZipEnhancer 使用阿里语音实验室发布的官方 ONNX 导出格式：输入必须是 `noisy_mag`、`noisy_pha`，输出为 `amp_g`、`pha_g`。Mic 按模型指定的 400-point STFT、100-sample hop、幅度压缩系数 0.3，在 CPU 上处理 16 kHz 单声道 PCM16 的端点窗口；不会安装完整 ModelScope 或 Torch 常驻依赖。由于该 ONNX 是带双侧 STFT 上下文的增强模型，Mic 不会对每一个 20 ms 块单独推理，以免显著增加 CPU 开销和边界伪影。
+ZipEnhancer 使用阿里语音实验室发布的官方 ONNX 导出格式：输入必须是 `noisy_mag`、`noisy_pha`，输出为 `amp_g`、`pha_g`。Mic 按模型指定的 400-point STFT、100-sample hop、幅度压缩系数 0.3，在 CPU 上处理 16 kHz 单声道 PCM16 的连续窗口；不会安装完整 ModelScope 或 Torch 常驻依赖。窗口默认为 500 ms 且必须是 20 ms 的整数倍，避免对每一个 20 ms 块单独推理造成 CPU 开销和边界伪影。单窗口推理失败时 Mic 记录不含音频内容的诊断并原样转发该窗口，保证 VAD 和采集持续工作。
 
 OpenAI-compatible `/audio/transcriptions` 是一次 multipart 请求，并非流式 ASR 协议。因此采集和本地 VAD 是流式的，而降噪、CAM++ 与该 ASR 请求在端点形成后执行。若设置 `MIC_ASR_ENDPOINT_INCLUDES_VAD=true`，Mic 不加载本地 VAD，并强制每 2 秒提交一个有界窗口，避免无限累积音频；该模式应仅用于服务端确实支持 VAD/分段的 ASR endpoint。
 
 ```text
-PortAudio input -> 20 ms PCM16 block -> local VAD/endpoint
-                                           -> optional ZipEnhancer -> CAM++/ASR
+PortAudio input -> 20 ms PCM16 block -> optional ZipEnhancer window -> local VAD/endpoint
+                                                                       -> CAM++/ASR
                                            -> WSS voice.evidence/asr.final
                                            -> WSS mic.input.register with Orchestrator
 ```

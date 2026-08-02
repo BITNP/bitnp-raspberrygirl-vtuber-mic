@@ -56,6 +56,7 @@ def test_load_config_reads_optional_speech_models_and_endpoint_vad() -> None:
     )
 
     assert config.zipenhancer_model_path == Path("/models/zipenhancer.onnx")
+    assert config.zipenhancer_window_ms == 500
     assert config.vad_model_path == Path("/models/silero.onnx")
     assert config.asr_endpoint_includes_vad is True
 
@@ -66,6 +67,17 @@ def test_load_config_rejects_invalid_endpoint_vad_flag() -> None:
             {
                 "ORCHESTRATOR_WS_URL": "wss://orchestrator.local/ws",
                 "MIC_ASR_ENDPOINT_INCLUDES_VAD": "yes",
+            }
+        )
+
+
+@pytest.mark.parametrize("value", ["21", "0", "not-a-number"])
+def test_load_config_rejects_invalid_zipenhancer_window(value: str) -> None:
+    with pytest.raises(ConfigError, match="MIC_ZIPENHANCER_WINDOW_MS"):
+        load_config(
+            {
+                "ORCHESTRATOR_WS_URL": "wss://orchestrator.local/ws",
+                "MIC_ZIPENHANCER_WINDOW_MS": value,
             }
         )
 

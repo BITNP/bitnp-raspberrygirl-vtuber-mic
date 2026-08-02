@@ -44,11 +44,14 @@ def test_run_stream_is_control_only_and_never_constructs_udp(monkeypatch) -> Non
         def __init__(self, *args, **kwargs) -> None:
             _ = args, kwargs
 
-        async def flush(self) -> None:
+        def push_enhanced_frame(self, frame: bytes, timestamp: int) -> object:
+            raise AssertionError((frame, timestamp))
+
+        def flush_enhanced_frames(self) -> None:
             calls.append("processor_flush")
 
-        async def push(self, frame: bytes, timestamp: int) -> None:
-            raise AssertionError((frame, timestamp))
+        async def recognize_endpoint(self, endpoint: object) -> None:
+            raise AssertionError(endpoint)
 
     async def open_control(*args, **kwargs) -> Control:
         _ = args, kwargs

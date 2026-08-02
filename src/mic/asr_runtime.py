@@ -4,7 +4,7 @@ from time import monotonic_ns
 
 from mic.asr import AsrEndpoint, EnergyEndpointDetector, OpenAICompatibleAsr
 from mic.camplusplus import CamPlusPlusOnnx
-from mic.speech_models import SileroVadOnnx, ZipEnhancerOnnx
+from mic.speech_models import SileroVadOnnx
 from mic.stream_control import AsrResult, VoiceEvidence, WebSocketStreamingControl
 
 
@@ -18,7 +18,6 @@ class MicAsrEndpointProcessor:
         stream_id: str,
         asr: OpenAICompatibleAsr,
         camplusplus: CamPlusPlusOnnx | None = None,
-        enhancer: ZipEnhancerOnnx | None = None,
         vad: SileroVadOnnx | None = None,
         asr_endpoint_includes_vad: bool = False,
         cancellation_epoch: int = 0,
@@ -27,7 +26,6 @@ class MicAsrEndpointProcessor:
         self._stream_id = stream_id
         self._asr = asr
         self._camplusplus = camplusplus
-        self._enhancer = enhancer
         self._vad = vad
         self._asr_endpoint_includes_vad = asr_endpoint_includes_vad
         self._vad_buffer = b""
@@ -43,18 +41,24 @@ class MicAsrEndpointProcessor:
         self._segment = 0
 
     async def push(self, frame: bytes, rtp_timestamp: int) -> None:
-        endpoint = self._detector.push(
-            frame,
-            rtp_timestamp,
-            speech=self._speech(frame),
-        )
+        endpoint = self.push_enhanced_frame(frame, rtp_timestamp)
         if endpoint is not None:
-            await self._recognize(endpoint)
+            await self.recognize_endpoint(endpoint)
+
+    def push_enhanced_frame(
+        self, frame: bytes, rtp_timestamp: int
+    ) -> AsrEndpoint | None:
+        """Accept one already enhanced 20 ms PCM frame and return a completed segment."""
+        return self._detector.push(frame, rtp_timestamp, speech=self._speech(frame))
 
     async def flush(self) -> None:
-        endpoint = self._detector.flush()
+        endpoint = self.flush_enhanced_frames()
         if endpoint is not None:
-            await self._recognize(endpoint)
+            await self.recognize_endpoint(endpoint)
+
+    def flush_enhanced_frames(self) -> AsrEndpoint | None:
+        """Finish the current enhanced VAD segment without stopping capture."""
+        return self._detector.flush()
 
     def _speech(self, frame: bytes) -> bool | None:
         if self._asr_endpoint_includes_vad:
@@ -68,19 +72,12 @@ class MicAsrEndpointProcessor:
             self._vad_buffer = self._vad_buffer[1024:]
         return self._last_vad_speech
 
-    async def _recognize(self, endpoint: object) -> None:
+    async def recognize_endpoint(self, endpoint: object) -> None:
         # Detector output is intentionally opaque at the streaming boundary;
         # the ASR adapter alone receives temporary PCM bytes.
 
         if not isinstance(endpoint, AsrEndpoint):
             return
-        enhancer = self._enhancer
-        if enhancer is not None:
-            endpoint = AsrEndpoint(
-                enhancer.enhance(endpoint.pcm16le),
-                endpoint.rtp_start_timestamp,
-                endpoint.rtp_end_timestamp,
-            )
         recognition = await self._asr.transcribe(endpoint)
         camplusplus = self._camplusplus
         if camplusplus is not None:

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 import numpy
 import onnxruntime
@@ -11,6 +13,10 @@ import onnxruntime
 from mic.config import ConfigError
 
 SAMPLE_RATE_HZ = 16_000
+
+PCM16_20MS_FRAME_BYTES = 640
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _session(path: Path, key: str) -> onnxruntime.InferenceSession:
@@ -55,9 +61,71 @@ class ZipEnhancerOnnx:
                 key="MIC_ZIPENHANCER_MODEL_PATH",
                 reason="model output does not match ZipEnhancer spectrogram shape",
             )
+        if not numpy.isfinite(amp_g).all() or not numpy.isfinite(pha_g).all():
+            raise ConfigError(
+                key="MIC_ZIPENHANCER_MODEL_PATH", reason="model output is not finite"
+            )
         enhanced = _mag_pha_istft(amp_g[0], pha_g[0], padded)
         enhanced = enhanced[: samples.size] / norm
-        return numpy.clip(enhanced * 32768, -32768, 32767).astype("<i2").tobytes()
+        output = numpy.clip(enhanced * 32768, -32768, 32767).astype("<i2").tobytes()
+        if len(output) != len(pcm16le):
+            raise ConfigError(
+                key="MIC_ZIPENHANCER_MODEL_PATH", reason="model output length changed"
+            )
+        return output
+
+
+class PcmEnhancer(Protocol):
+    def enhance(self, pcm16le: bytes) -> bytes: ...
+
+
+class ZipEnhancerStreamingProcessor:
+    """Accumulates fixed PCM windows and fail-opens if one inference fails."""
+
+    def __init__(self, enhancer: PcmEnhancer, *, window_ms: int = 500) -> None:
+        if window_ms < 20 or window_ms % 20:
+            raise ValueError("window_ms must be a positive multiple of 20")
+        self._enhancer = enhancer
+        self._frames_per_window = window_ms // 20
+        self._frames: list[bytes] = []
+
+    def push(self, frame: bytes) -> tuple[bytes, ...]:
+        self._validate_frame(frame)
+        self._frames.append(frame)
+        if len(self._frames) < self._frames_per_window:
+            return ()
+        return self._process_window()
+
+    def flush(self) -> tuple[bytes, ...]:
+        if not self._frames:
+            return ()
+        return self._process_window()
+
+    def _process_window(self) -> tuple[bytes, ...]:
+        frames = tuple(self._frames)
+        self._frames.clear()
+        raw = b"".join(frames)
+        try:
+            enhanced = self._enhancer.enhance(raw)
+            if len(enhanced) != len(raw):
+                raise ValueError("enhanced PCM length changed")
+        except Exception:
+            LOGGER.exception(
+                "ZipEnhancer window failed; forwarding raw PCM",
+                extra={"frame_count": len(frames)},
+            )
+            return frames
+        return tuple(
+            enhanced[offset : offset + PCM16_20MS_FRAME_BYTES]
+            for offset in range(0, len(enhanced), PCM16_20MS_FRAME_BYTES)
+        )
+
+    @staticmethod
+    def _validate_frame(frame: bytes) -> None:
+        if len(frame) != PCM16_20MS_FRAME_BYTES:
+            raise ConfigError(
+                key="capture.block", reason="must contain exactly 640 PCM16 bytes"
+            )
 
 
 _N_FFT = 400
