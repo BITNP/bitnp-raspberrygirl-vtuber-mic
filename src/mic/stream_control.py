@@ -23,6 +23,10 @@ SOURCE_REGISTER_EVENT: Final = "media.rtp.source.register"
 SOURCE_STOP_EVENT: Final = "media.rtp.source.stop"
 
 SOUND_FLUSH_EVENT: Final = "media.stream.flush"
+
+VOICE_EVIDENCE_EVENT: Final = "voice.evidence"
+
+MAX_EMBEDDING_DIMENSIONS: Final = 1_024
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -31,6 +35,29 @@ class ControlContext:
     trace_id: str
 
     session_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class VoiceEvidence:
+    stream_id: str
+    rtp_start_timestamp: int
+    rtp_end_timestamp: int
+    embedding_model_revision: str
+    embedding: tuple[float, ...]
+    speech_ms: int
+    quality_score: float
+
+    def __post_init__(self) -> None:
+        if (
+            not self.stream_id
+            or self.rtp_start_timestamp < 0
+            or self.rtp_end_timestamp < self.rtp_start_timestamp
+            or not self.embedding_model_revision
+            or not 1 <= len(self.embedding) <= MAX_EMBEDDING_DIMENSIONS
+            or self.speech_ms <= 0
+            or not 0 <= self.quality_score <= 1
+        ):
+            raise ConfigError(key=VOICE_EVIDENCE_EVENT, reason="invalid evidence")
 
 
 class ControlConnection(Protocol):
@@ -247,6 +274,34 @@ class WebSocketStreamingControl:
             self._highest_stop_epochs[registration.stream_id] = epoch
 
             return epoch
+
+    async def send_voice_evidence(
+        self, evidence: VoiceEvidence, *, sequence: int
+    ) -> None:
+        if sequence < 0:
+            raise ConfigError(key=VOICE_EVIDENCE_EVENT, reason="invalid sequence")
+        event = {
+            "schema_version": SCHEMA_VERSION,
+            "event_type": VOICE_EVIDENCE_EVENT,
+            "event_id": str(uuid4()),
+            "source": "mic",
+            "time": datetime.now(UTC).isoformat(),
+            "trace_id": self._context.trace_id,
+            "session_id": self._context.session_id,
+            "seq": sequence,
+            "data": {
+                "stream_id": evidence.stream_id,
+                "rtp_start_timestamp": evidence.rtp_start_timestamp,
+                "rtp_end_timestamp": evidence.rtp_end_timestamp,
+                "embedding_model_revision": evidence.embedding_model_revision,
+                "embedding": list(evidence.embedding),
+                "quality": {
+                    "speech_ms": evidence.speech_ms,
+                    "score": evidence.quality_score,
+                },
+            },
+        }
+        await self._connection.send(json.dumps(event, separators=(",", ":")))
 
     async def aclose(self) -> None:
         _LOGGER.debug("mic_control_closed session=%s", self._context.session_id)

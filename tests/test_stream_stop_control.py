@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import asyncio
@@ -12,6 +11,7 @@ import pytest
 from mic.config import ConfigError, OrchestratorWsUrl, ServiceConfig, TrustedLanToken
 from mic.stream_control import (
     ControlContext,
+    VoiceEvidence,
     WebsocketsControlConnector,
     WebSocketStreamingControl,
 )
@@ -27,16 +27,16 @@ from mic.streaming import (
 
 @dataclass(slots=True)
 class _Connection:
-
     messages: list[str]
+
+    sent: list[str] = field(default_factory=list)
 
     async def recv(self) -> str:
 
         return self.messages.pop(0)
 
     async def send(self, message: str) -> None:
-
-        _ = message
+        self.sent.append(message)
 
     async def close(self) -> None:
 
@@ -45,7 +45,6 @@ class _Connection:
 
 @dataclass(slots=True)
 class _ControlConnector:
-
     connection: _Connection
 
     ssl_context: ssl.SSLContext | None = None
@@ -77,7 +76,6 @@ def ca_path(tmp_path: Path) -> Path:
 
 @dataclass(slots=True)
 class _BlockingCapture:
-
     entered: asyncio.Event = field(default_factory=asyncio.Event)
 
     release: asyncio.Event = field(default_factory=asyncio.Event)
@@ -103,7 +101,6 @@ class _BlockingCapture:
 
 @dataclass(slots=True)
 class _StopControl:
-
     capture: _BlockingCapture
 
     closed: bool = False
@@ -131,7 +128,6 @@ class _StopControl:
 
 @dataclass(slots=True)
 class _Udp:
-
     sent: list[bytes] = field(default_factory=list)
 
     closed: bool = False
@@ -154,6 +150,32 @@ class _Udp:
 def test_websocket_control_accepts_only_current_orchestrator_flush_epoch() -> None:
 
     asyncio.run(_flush_epoch_proof())
+
+
+def test_websocket_control_sends_versioned_voice_evidence() -> None:
+    connection = _Connection(messages=[])
+    control = WebSocketStreamingControl(connection, ControlContext("trace-1", "s-1"))
+
+    asyncio.run(
+        control.send_voice_evidence(
+            VoiceEvidence(
+                stream_id="mic-1",
+                rtp_start_timestamp=1,
+                rtp_end_timestamp=321,
+                embedding_model_revision="camplusplus-onnx-v1",
+                embedding=(0.25, -0.5),
+                speech_ms=20,
+                quality_score=0.9,
+            ),
+            sequence=4,
+        )
+    )
+
+    event = json.loads(connection.sent[0])
+    assert event["event_type"] == "voice.evidence"
+    assert event["session_id"] == "s-1"
+    assert event["seq"] == 4
+    assert event["data"]["embedding"] == [0.25, -0.5]
 
 
 def test_websocket_control_ignores_sound_flush_before_mic_stop() -> None:
@@ -181,7 +203,6 @@ def test_websocket_control_open_passes_verified_ca_context_and_bearer_header_to_
 ) -> None:
     # Given: an authenticated WSS Mic control session with a configured CA bundle.
 
-
     connector = _ControlConnector(_Connection(messages=[]))
     config = ServiceConfig(
         orchestrator_ws_url=OrchestratorWsUrl(
@@ -193,7 +214,6 @@ def test_websocket_control_open_passes_verified_ca_context_and_bearer_header_to_
 
     # When: Mic opens control through its connector contract.
 
-
     asyncio.run(
         WebSocketStreamingControl.open(
             config, ControlContext("trace-001", "session-001"), connector=connector
@@ -201,7 +221,6 @@ def test_websocket_control_open_passes_verified_ca_context_and_bearer_header_to_
     )
 
     # Then: the verified CA context and existing bearer header cross the seam together.
-
 
     assert isinstance(connector.ssl_context, ssl.SSLContext)
     assert connector.ssl_context.check_hostname is True
@@ -213,7 +232,6 @@ def test_websockets_control_connector_passes_context_to_wss_connect(
     monkeypatch: pytest.MonkeyPatch, ca_path: Path
 ) -> None:
     # Given: a verified CA context and the real Mic connector.
-
 
     connection = _Connection(messages=[])
     captured_context: ssl.SSLContext | None = None
@@ -234,7 +252,6 @@ def test_websockets_control_connector_passes_context_to_wss_connect(
 
     # When: the production connector opens the secure route.
 
-
     opened = asyncio.run(
         WebsocketsControlConnector().connect(
             "wss://orchestrator.example.test/control",
@@ -245,7 +262,6 @@ def test_websockets_control_connector_passes_context_to_wss_connect(
 
     # Then: the real websockets call receives the exact TLS context and header.
 
-
     assert opened is connection
     assert captured_context is context
     assert captured_headers == {"Authorization": "Bearer trusted-token"}
@@ -255,7 +271,6 @@ def test_websockets_control_connector_omits_ssl_for_ws_connect(
     monkeypatch: pytest.MonkeyPatch, ca_path: Path
 ) -> None:
     # Given: a plaintext loopback route even though a caller supplies a CA context.
-
 
     connection = _Connection(messages=[])
     captured_headers: dict[str, str] | None = None
@@ -274,15 +289,11 @@ def test_websockets_control_connector_omits_ssl_for_ws_connect(
 
     # When: the production connector opens the plaintext route.
 
-
     opened = asyncio.run(
-        WebsocketsControlConnector().connect(
-            "ws://127.0.0.1/control", {}, context
-        )
+        WebsocketsControlConnector().connect("ws://127.0.0.1/control", {}, context)
     )
 
     # Then: the real websockets call retains its pre-TLS argument shape.
-
 
     assert opened is connection
     assert captured_headers == {}
@@ -290,7 +301,6 @@ def test_websockets_control_connector_omits_ssl_for_ws_connect(
 
 async def _flush_epoch_proof() -> None:
     # Given: an authenticated WSS control connection with a current Mic stop envelope.
-
 
     registration = SourceRegistration(
         "stream-001", RtpEndpoint("127.0.0.1", RtpPort(5004))
@@ -312,7 +322,6 @@ async def _flush_epoch_proof() -> None:
 
 async def _flush_is_not_mic_stop_proof() -> None:
     # Given: Sound's flush and Mic's authenticated stop are separate controls.
-
 
     registration = SourceRegistration(
         "stream-001", RtpEndpoint("127.0.0.1", RtpPort(5004))
@@ -339,7 +348,6 @@ async def _flush_is_not_mic_stop_proof() -> None:
 
 async def _stop_gate_proof() -> None:
     # Given: capture is blocked after opening while authenticated control receives stop epoch four.
-
 
     capture = _BlockingCapture()
 
@@ -375,7 +383,6 @@ async def _stop_gate_proof() -> None:
 
 async def _malformed_stop_proof() -> None:
     # Given: a control envelope not authenticated as an Orchestrator flush for this session.
-
 
     registration = SourceRegistration(
         "stream-001", RtpEndpoint("127.0.0.1", RtpPort(5004))
