@@ -1,4 +1,4 @@
-from mic.asr import FRAME_BYTES, EnergyEndpointDetector
+from mic.asr import FRAME_BYTES, EnergyEndpointDetector, OpenAICompatibleAsr
 
 
 def test_endpoint_detector_forces_a_bounded_segment_without_silence() -> None:
@@ -13,3 +13,9 @@ def test_endpoint_detector_forces_a_bounded_segment_without_silence() -> None:
     assert endpoint.pcm16le == b"".join(frames)
     assert endpoint.rtp_start_timestamp == 0
     assert endpoint.rtp_end_timestamp == 960
+
+
+def test_openai_compatible_asr_appends_transcription_path_to_base_url() -> None:
+    asr = OpenAICompatibleAsr("https://asr.example.test/v1/", "asr")
+
+    assert asr._endpoint == "https://asr.example.test/v1/audio/transcriptions"

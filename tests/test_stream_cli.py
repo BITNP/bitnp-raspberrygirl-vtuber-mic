@@ -14,7 +14,7 @@ def test_run_stream_is_control_only_and_never_constructs_udp(monkeypatch) -> Non
         max_blocks=1,
         service_config=ServiceConfig(
             OrchestratorWsUrl("wss://orchestrator.example.test/control"),
-            asr_endpoint="https://asr.example.test/v1/audio/transcriptions",
+            asr_endpoint="https://asr.example.test/v1",
             asr_model="asr",
         ),
     )

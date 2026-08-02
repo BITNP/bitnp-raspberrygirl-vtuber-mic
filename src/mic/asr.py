@@ -33,12 +33,16 @@ class Recognition:
 
 
 class OpenAICompatibleAsr:
-    """Small stdlib-only OpenAI-compatible ``/audio/transcriptions`` client."""
+    """Small stdlib-only OpenAI-compatible transcription client.
+
+    ``endpoint`` is the provider base URL (for example, ``https://asr.example/v1``).
+    The OpenAI-compatible transcription path is owned by this adapter.
+    """
 
     def __init__(self, endpoint: str, model: str, api_key: str | None = None) -> None:
         if not endpoint or not model:
             raise ConfigError(key="MIC_ASR_ENDPOINT", reason="endpoint and model required")
-        self._endpoint = endpoint
+        self._endpoint = f"{endpoint.rstrip('/')}/audio/transcriptions"
         self._model = model
         self._api_key = api_key
 
