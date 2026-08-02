@@ -81,17 +81,19 @@ class EnergyEndpointDetector:
         self._last_end = 0
         self._silence = 0
 
-    def push(self, frame: bytes, rtp_timestamp: int) -> AsrEndpoint | None:
+    def push(
+        self, frame: bytes, rtp_timestamp: int, *, speech: bool | None = None
+    ) -> AsrEndpoint | None:
         if len(frame) != FRAME_BYTES:
             raise ConfigError(key="capture.block", reason="must contain exactly 640 PCM16 bytes")
-        speech = _energy(frame) >= self._threshold
-        if speech and self._start is None:
+        is_speech = _energy(frame) >= self._threshold if speech is None else speech
+        if is_speech and self._start is None:
             self._start = rtp_timestamp
         if self._start is None:
             return None
         self._frames.append(frame)
         self._last_end = (rtp_timestamp + 320) % (1 << 32)
-        self._silence = 0 if speech else self._silence + 1
+        self._silence = 0 if is_speech else self._silence + 1
         if self._silence < self._trailing_silence_frames:
             return None
         return self.flush()

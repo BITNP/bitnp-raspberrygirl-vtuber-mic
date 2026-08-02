@@ -8,7 +8,7 @@ Python 3.12+、`uv`、`pytest`、`websockets` 和 `sounddevice`；ASR HTTP 调�
 
 ## 架构与数据流
 
-`mic-stream` 组合 PortAudio capture、端点检测、可选 OpenAI-compatible ASR、Orchestrator WSS control boundary 和 UDP RTP sender。启动后先绑定本地 UDP，再通过 WSS 发送 `media.rtp.source.register`。只有收到匹配的 `media.rtp.source.ready` 后，捕获帧才会被转为 RTP 并发往 Orchestrator。端点窗口的原始 PCM 只在 Mic 内存中保留到单次 ASR 请求完成。
+`mic-stream` 组合 PortAudio capture、可选 ZipEnhancer ONNX 降噪、Silero VAD ONNX、CAM++、OpenAI-compatible ASR 和 Orchestrator WSS control boundary。端点窗口的原始 PCM 只在 Mic 内存中保留到单次模型/ASR 请求完成。设置 `MIC_ASR_ENDPOINT_INCLUDES_VAD=true` 时跳过本地 Silero VAD，由 ASR endpoint 负责分段。
 
 ```text
 PortAudio input -> 20 ms PCM16 block -> L16 RTP packet -> Orchestrator UDP ingress

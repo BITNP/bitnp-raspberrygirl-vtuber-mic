@@ -37,6 +37,12 @@ CAMPP_MODEL_PATH_KEY: Final = "MIC_CAMPP_MODEL_PATH"
 
 CAMPP_MODEL_REVISION_KEY: Final = "MIC_CAMPP_MODEL_REVISION"
 
+ZIPENHANCER_MODEL_PATH_KEY: Final = "MIC_ZIPENHANCER_MODEL_PATH"
+
+VAD_MODEL_PATH_KEY: Final = "MIC_VAD_MODEL_PATH"
+
+ASR_ENDPOINT_INCLUDES_VAD_KEY: Final = "MIC_ASR_ENDPOINT_INCLUDES_VAD"
+
 PEER_WS_URL_KEYS: Final = (
     "MIC_WS_URL",
     "ASR_WS_URL",
@@ -86,6 +92,12 @@ class ServiceConfig:
 
     campp_model_revision: str | None = None
 
+    zipenhancer_model_path: Path | None = None
+
+    vad_model_path: Path | None = None
+
+    asr_endpoint_includes_vad: bool = False
+
 
 def load_config(env: Mapping[str, str] | None = None) -> ServiceConfig:
 
@@ -108,6 +120,14 @@ def load_config(env: Mapping[str, str] | None = None) -> ServiceConfig:
         asr_api_key=_optional_text(source.get(ASR_API_KEY_KEY)),
         campp_model_path=_parse_optional_path(source.get(CAMPP_MODEL_PATH_KEY)),
         campp_model_revision=_optional_text(source.get(CAMPP_MODEL_REVISION_KEY)),
+        zipenhancer_model_path=_parse_optional_path(
+            source.get(ZIPENHANCER_MODEL_PATH_KEY)
+        ),
+        vad_model_path=_parse_optional_path(source.get(VAD_MODEL_PATH_KEY)),
+        asr_endpoint_includes_vad=_parse_bool(
+            source.get(ASR_ENDPOINT_INCLUDES_VAD_KEY),
+            ASR_ENDPOINT_INCLUDES_VAD_KEY,
+        ),
     )
 
 
@@ -169,3 +189,13 @@ def _optional_text(value: str | None) -> str | None:
     if value is None or value.strip() == "":
         return None
     return value.strip()
+
+
+def _parse_bool(value: str | None, key: str) -> bool:
+    if value is None or value.strip() == "":
+        return False
+    if value.strip().lower() == "true":
+        return True
+    if value.strip().lower() == "false":
+        return False
+    raise ConfigError(key=key, reason="must be true or false")

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from time import monotonic_ns
 
-from mic.asr import EnergyEndpointDetector, OpenAICompatibleAsr
+from mic.asr import AsrEndpoint, EnergyEndpointDetector, OpenAICompatibleAsr
 from mic.camplusplus import CamPlusPlusOnnx
+from mic.speech_models import SileroVadOnnx, ZipEnhancerOnnx
 from mic.stream_control import AsrResult, VoiceEvidence, WebSocketStreamingControl
 
 
@@ -17,19 +18,31 @@ class MicAsrEndpointProcessor:
         stream_id: str,
         asr: OpenAICompatibleAsr,
         camplusplus: CamPlusPlusOnnx | None = None,
+        enhancer: ZipEnhancerOnnx | None = None,
+        vad: SileroVadOnnx | None = None,
+        asr_endpoint_includes_vad: bool = False,
         cancellation_epoch: int = 0,
     ) -> None:
         self._control = control
         self._stream_id = stream_id
         self._asr = asr
         self._camplusplus = camplusplus
+        self._enhancer = enhancer
+        self._vad = vad
+        self._asr_endpoint_includes_vad = asr_endpoint_includes_vad
+        self._vad_buffer = b""
+        self._last_vad_speech = False
         self._epoch = cancellation_epoch
         self._detector = EnergyEndpointDetector()
         self._sequence = 1
         self._segment = 0
 
     async def push(self, frame: bytes, rtp_timestamp: int) -> None:
-        endpoint = self._detector.push(frame, rtp_timestamp)
+        endpoint = self._detector.push(
+            frame,
+            rtp_timestamp,
+            speech=self._speech(frame),
+        )
         if endpoint is not None:
             await self._recognize(endpoint)
 
@@ -38,13 +51,31 @@ class MicAsrEndpointProcessor:
         if endpoint is not None:
             await self._recognize(endpoint)
 
+    def _speech(self, frame: bytes) -> bool | None:
+        if self._asr_endpoint_includes_vad:
+            return True
+        vad = self._vad
+        if vad is None:
+            return None
+        self._vad_buffer += frame
+        if len(self._vad_buffer) >= 1024:
+            self._last_vad_speech = vad.speech_probability(self._vad_buffer[:1024]) >= 0.5
+            self._vad_buffer = self._vad_buffer[1024:]
+        return self._last_vad_speech
+
     async def _recognize(self, endpoint: object) -> None:
         # Detector output is intentionally opaque at the streaming boundary;
         # the ASR adapter alone receives temporary PCM bytes.
-        from mic.asr import AsrEndpoint
 
         if not isinstance(endpoint, AsrEndpoint):
             return
+        enhancer = self._enhancer
+        if enhancer is not None:
+            endpoint = AsrEndpoint(
+                enhancer.enhance(endpoint.pcm16le),
+                endpoint.rtp_start_timestamp,
+                endpoint.rtp_end_timestamp,
+            )
         recognition = await self._asr.transcribe(endpoint)
         camplusplus = self._camplusplus
         if camplusplus is not None:
