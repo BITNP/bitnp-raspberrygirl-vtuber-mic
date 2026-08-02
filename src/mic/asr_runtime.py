@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
+from dataclasses import dataclass
 from time import monotonic_ns
 
 from mic.asr import AsrEndpoint, EnergyEndpointDetector, OpenAICompatibleAsr
-from mic.camplusplus import CamPlusPlusOnnx
+from mic.camplusplus import CamPlusPlusEmbedding, CamPlusPlusWindow
 from mic.speech_models import SileroVadOnnx
 from mic.stream_control import AsrResult, VoiceEvidence, WebSocketStreamingControl
 
@@ -17,7 +19,6 @@ class MicAsrEndpointProcessor:
         *,
         stream_id: str,
         asr: OpenAICompatibleAsr,
-        camplusplus: CamPlusPlusOnnx | None = None,
         vad: SileroVadOnnx | None = None,
         asr_endpoint_includes_vad: bool = False,
         cancellation_epoch: int = 0,
@@ -25,7 +26,6 @@ class MicAsrEndpointProcessor:
         self._control = control
         self._stream_id = stream_id
         self._asr = asr
-        self._camplusplus = camplusplus
         self._vad = vad
         self._asr_endpoint_includes_vad = asr_endpoint_includes_vad
         self._vad_buffer = b""
@@ -39,6 +39,7 @@ class MicAsrEndpointProcessor:
         )
         self._sequence = 1
         self._segment = 0
+        self._send_lock = asyncio.Lock()
 
     async def push(self, frame: bytes, rtp_timestamp: int) -> None:
         endpoint = self.push_enhanced_frame(frame, rtp_timestamp)
@@ -49,7 +50,16 @@ class MicAsrEndpointProcessor:
         self, frame: bytes, rtp_timestamp: int
     ) -> AsrEndpoint | None:
         """Accept one already enhanced 20 ms PCM frame and return a completed segment."""
-        return self._detector.push(frame, rtp_timestamp, speech=self._speech(frame))
+        return self.analyze_enhanced_frame(frame, rtp_timestamp).endpoint
+
+    def analyze_enhanced_frame(self, frame: bytes, rtp_timestamp: int) -> FrameAnalysis:
+        """Run the stateful VAD once and share its result with all consumers."""
+        vad_speech = self._speech(frame)
+        endpoint_speech = True if self._asr_endpoint_includes_vad else vad_speech
+        return FrameAnalysis(
+            speech=False if vad_speech is None else vad_speech,
+            endpoint=self._detector.push(frame, rtp_timestamp, speech=endpoint_speech),
+        )
 
     async def flush(self) -> None:
         endpoint = self.flush_enhanced_frames()
@@ -61,8 +71,6 @@ class MicAsrEndpointProcessor:
         return self._detector.flush()
 
     def _speech(self, frame: bytes) -> bool | None:
-        if self._asr_endpoint_includes_vad:
-            return True
         vad = self._vad
         if vad is None:
             return None
@@ -79,36 +87,45 @@ class MicAsrEndpointProcessor:
         if not isinstance(endpoint, AsrEndpoint):
             return
         recognition = await self._asr.transcribe(endpoint)
-        camplusplus = self._camplusplus
-        if camplusplus is not None:
-            embedding = camplusplus.embed(endpoint)
-            await self._control.send_voice_evidence(
-                VoiceEvidence(
+        if not recognition.text:
+            return
+        self._segment += 1
+        async with self._send_lock:
+            await self._control.send_asr_final(
+                AsrResult(
                     stream_id=self._stream_id,
+                    segment_id=f"asr-{self._segment}",
                     rtp_start_timestamp=endpoint.rtp_start_timestamp,
                     rtp_end_timestamp=endpoint.rtp_end_timestamp,
-                    embedding_model_revision=camplusplus.revision,
-                    embedding=embedding.values,
-                    speech_ms=len(endpoint.pcm16le) * 1000 // 32_000,
-                    quality_score=embedding.quality_score,
+                    cancellation_epoch=self._epoch,
+                    text=recognition.text,
+                    received_at_ms=monotonic_ns() // 1_000_000,
+                    confidence=recognition.confidence,
                 ),
                 sequence=self._sequence,
             )
             self._sequence += 1
-        if not recognition.text:
-            return
-        self._segment += 1
-        await self._control.send_asr_final(
-            AsrResult(
-                stream_id=self._stream_id,
-                segment_id=f"asr-{self._segment}",
-                rtp_start_timestamp=endpoint.rtp_start_timestamp,
-                rtp_end_timestamp=endpoint.rtp_end_timestamp,
-                cancellation_epoch=self._epoch,
-                text=recognition.text,
-                received_at_ms=monotonic_ns() // 1_000_000,
-                confidence=recognition.confidence,
-            ),
-            sequence=self._sequence,
-        )
-        self._sequence += 1
+
+    async def emit_voice_evidence(
+        self, window: CamPlusPlusWindow, embedding: CamPlusPlusEmbedding, revision: str
+    ) -> None:
+        async with self._send_lock:
+            await self._control.send_voice_evidence(
+                VoiceEvidence(
+                    stream_id=self._stream_id,
+                    rtp_start_timestamp=window.rtp_start_timestamp,
+                    rtp_end_timestamp=window.rtp_end_timestamp,
+                    embedding_model_revision=revision,
+                    embedding=embedding.values,
+                    speech_ms=window.speech_ms,
+                    quality_score=min(1.0, window.speech_ms / 1_500),
+                ),
+                sequence=self._sequence,
+            )
+            self._sequence += 1
+
+
+@dataclass(frozen=True, slots=True)
+class FrameAnalysis:
+    speech: bool
+    endpoint: AsrEndpoint | None

@@ -37,6 +37,8 @@ CAMPP_MODEL_PATH_KEY: Final = "MIC_CAMPP_MODEL_PATH"
 
 CAMPP_MODEL_REVISION_KEY: Final = "MIC_CAMPP_MODEL_REVISION"
 
+CAMPP_FBANK_CONFIG_PATH_KEY: Final = "MIC_CAMPP_FBANK_CONFIG_PATH"
+
 ZIPENHANCER_MODEL_PATH_KEY: Final = "MIC_ZIPENHANCER_MODEL_PATH"
 
 ZIPENHANCER_WINDOW_MS_KEY: Final = "MIC_ZIPENHANCER_WINDOW_MS"
@@ -96,6 +98,8 @@ class ServiceConfig:
 
     campp_model_revision: str | None = None
 
+    campp_fbank_config_path: Path | None = None
+
     zipenhancer_model_path: Path | None = None
 
     zipenhancer_window_ms: int = DEFAULT_ZIPENHANCER_WINDOW_MS
@@ -113,7 +117,7 @@ def load_config(env: Mapping[str, str] | None = None) -> ServiceConfig:
 
     raw_url = source.get(ORCHESTRATOR_WS_URL_KEY, "").strip()
 
-    return ServiceConfig(
+    config = ServiceConfig(
         orchestrator_ws_url=_parse_orchestrator_ws_url(raw_url),
         health_host=HealthHost(
             source.get(HEALTH_HOST_KEY, DEFAULT_HEALTH_HOST).strip()
@@ -126,6 +130,9 @@ def load_config(env: Mapping[str, str] | None = None) -> ServiceConfig:
         asr_api_key=_optional_text(source.get(ASR_API_KEY_KEY)),
         campp_model_path=_parse_optional_path(source.get(CAMPP_MODEL_PATH_KEY)),
         campp_model_revision=_optional_text(source.get(CAMPP_MODEL_REVISION_KEY)),
+        campp_fbank_config_path=_parse_optional_path(
+            source.get(CAMPP_FBANK_CONFIG_PATH_KEY)
+        ),
         zipenhancer_model_path=_parse_optional_path(
             source.get(ZIPENHANCER_MODEL_PATH_KEY)
         ),
@@ -138,6 +145,18 @@ def load_config(env: Mapping[str, str] | None = None) -> ServiceConfig:
             ASR_ENDPOINT_INCLUDES_VAD_KEY,
         ),
     )
+    if len(
+        {
+            config.campp_model_path is None,
+            config.campp_model_revision is None,
+            config.campp_fbank_config_path is None,
+        }
+    ) != 1:
+        raise ConfigError(
+            key=CAMPP_MODEL_PATH_KEY,
+            reason="model, revision and FBank config must be configured together",
+        )
+    return config
 
 
 def _parse_zipenhancer_window_ms(raw_value: str | None) -> int:
