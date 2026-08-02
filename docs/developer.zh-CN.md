@@ -4,26 +4,28 @@ Mic 是 Orchestrator-only 的 hub client。它不感知业务策略，也不持�
 
 ## 技术栈
 
-Python 3.12+、`uv`、`pytest`、`websockets` 和 `sounddevice`。命令入口为 `mic-health` 和 `mic-stream`。
+Python 3.12+、`uv`、`pytest`、`websockets` 和 `sounddevice`；ASR HTTP 调用仅使用 Python 标准库。命令入口为 `mic-health` 和 `mic-stream`。
 
 ## 架构与数据流
 
-`mic-stream` 组合 PortAudio capture、Orchestrator WSS control boundary 和 UDP RTP sender。启动后先绑定本地 UDP，再通过 WSS 发送 `media.rtp.source.register`。只有收到匹配的 `media.rtp.source.ready` 后，捕获帧才会被转为 RTP 并发往 Orchestrator。
+`mic-stream` 组合 PortAudio capture、端点检测、可选 OpenAI-compatible ASR、Orchestrator WSS control boundary 和 UDP RTP sender。启动后先绑定本地 UDP，再通过 WSS 发送 `media.rtp.source.register`。只有收到匹配的 `media.rtp.source.ready` 后，捕获帧才会被转为 RTP 并发往 Orchestrator。端点窗口的原始 PCM 只在 Mic 内存中保留到单次 ASR 请求完成。
 
 ```text
 PortAudio input -> 20 ms PCM16 block -> L16 RTP packet -> Orchestrator UDP ingress
+                    \-> VAD/endpoint -> OpenAI-compatible ASR -> WSS asr.final
                                  \-> WSS register/ready with Orchestrator
 ```
 
 ## 通信协议
 
-Mic 引用 Orchestrator 的 `schemas/protocol/envelope.schema.json` 和 `schemas/protocol/event-data.schema.json`。媒体契约固定为 L16、16 kHz、mono、payload type 96、每帧 320 samples。不要在本仓库复制 schema 或 fixture。
+Mic 引用 Orchestrator 的 `schemas/protocol/envelope.schema.json` 和 `schemas/protocol/event-data.schema.json`。媒体契约固定为 L16、16 kHz、mono、payload type 96、每帧 320 samples。`asr.partial` 仅诊断，只有 `asr.final` 可以进入调度；它必须携带 stream、segment、RTP 起止范围、取消 epoch、文本、接收时间及可选置信度。不要在本仓库复制 schema 或 fixture。
 
 ## 模块契约
 
 - 必须只连接 Orchestrator。
 - 必须先完成 source register/ready handshake，再发送媒体。
 - 必须保持 20 ms、640-byte L16 payload 的 RTP 封包边界。
+- 不得向 Orchestrator 发送原始 ASR 音频；只发送有界的结构化结果。不得从 partial 触发业务效果。
 - 生产 WSS 必须携带可信局域网 bearer token。
 - 生产部署在 `ORCHESTRATOR_TLS_CA_PATH` 设置同一个只读 PEM CA bundle，用于校验 Orchestrator WSS 证书。该路径也由 Orchestrator、Sound、Comments 使用；主机系统信任库只是已安装相同 CA 时的可选替代。
 
