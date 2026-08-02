@@ -16,6 +16,10 @@ SAMPLE_RATE_HZ = 16_000
 
 PCM16_20MS_FRAME_BYTES = 640
 
+SILERO_VAD_WINDOW_SAMPLES = 512
+
+SILERO_VAD_CONTEXT_SAMPLES = 64
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -158,13 +162,14 @@ def _mag_pha_istft(magnitude: numpy.ndarray, phase: numpy.ndarray, padded: int) 
 
 @dataclass(slots=True)
 class SileroVadOnnx:
-    """Stateful Silero VAD ONNX adapter for 16 kHz 512-sample windows."""
+    """Stateful Silero VAD ONNX adapter following the official ONNX wrapper."""
 
     _session: onnxruntime.InferenceSession
     _input_name: str
     _state_name: str
     _sample_rate_name: str
     _state: numpy.ndarray
+    _context: numpy.ndarray
 
     @classmethod
     def load(cls, model_path: Path) -> SileroVadOnnx:
@@ -178,15 +183,24 @@ class SileroVadOnnx:
             "state",
             "sr",
             numpy.zeros((2, 1, 128), dtype=numpy.float32),
+            numpy.zeros((1, SILERO_VAD_CONTEXT_SAMPLES), dtype=numpy.float32),
         )
 
     def speech_probability(self, pcm16le: bytes) -> float:
         samples = numpy.frombuffer(pcm16le, dtype="<i2").astype(numpy.float32) / 32768
-        if samples.size != 512:
+        if samples.size != SILERO_VAD_WINDOW_SAMPLES:
             raise ConfigError(key="MIC_VAD_MODEL_PATH", reason="requires 512 samples")
+        model_input = numpy.concatenate(
+            (self._context, samples[numpy.newaxis, :]), axis=1
+        )
         output, state = self._session.run(
             None,
-            {self._input_name: samples[numpy.newaxis, :], self._state_name: self._state, self._sample_rate_name: numpy.array(SAMPLE_RATE_HZ, dtype=numpy.int64)},
+            {
+                self._input_name: model_input,
+                self._state_name: self._state,
+                self._sample_rate_name: numpy.array(SAMPLE_RATE_HZ, dtype=numpy.int64),
+            },
         )
         self._state = numpy.asarray(state)
+        self._context = model_input[:, -SILERO_VAD_CONTEXT_SAMPLES:]
         return float(numpy.asarray(output).reshape(-1)[0])

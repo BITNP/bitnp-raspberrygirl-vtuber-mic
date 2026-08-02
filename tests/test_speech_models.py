@@ -110,13 +110,45 @@ def test_silero_vad_sends_state_and_updates_it() -> None:
         "state",
         "sr",
         numpy.zeros((2, 1, 128), dtype=numpy.float32),
+        numpy.zeros((1, 64), dtype=numpy.float32),
     )
 
     probability = vad.speech_probability(bytes(1_024))
 
     assert probability == 0.75
     assert session.inputs is not None
-    assert session.inputs["input"].shape == (1, 512)
+    assert session.inputs["input"].shape == (1, 576)
+    assert numpy.all(session.inputs["input"][:, :64] == 0)
     assert session.inputs["state"].shape == (2, 1, 128)
     assert session.inputs["sr"].item() == 16_000
     assert numpy.all(vad._state == 1)
+
+
+def test_silero_vad_carries_the_previous_window_tail_as_context() -> None:
+    class Session:
+        def __init__(self) -> None:
+            self.inputs: list[dict[str, numpy.ndarray]] = []
+
+        def run(
+            self, _outputs: object, inputs: dict[str, numpy.ndarray]
+        ) -> list[numpy.ndarray]:
+            self.inputs.append({name: value.copy() for name, value in inputs.items()})
+            return [numpy.array([[0.75]], dtype=numpy.float32), numpy.ones((2, 1, 128))]
+
+    first_window = numpy.arange(512, dtype="<i2")
+    session = Session()
+    vad = SileroVadOnnx(
+        session,  # pyright: ignore[reportArgumentType]
+        "input",
+        "state",
+        "sr",
+        numpy.zeros((2, 1, 128), dtype=numpy.float32),
+        numpy.zeros((1, 64), dtype=numpy.float32),
+    )
+
+    _ = vad.speech_probability(first_window.tobytes())
+    _ = vad.speech_probability(bytes(1_024))
+
+    assert numpy.allclose(
+        session.inputs[1]["input"][0, :64], first_window[-64:] / 32768
+    )
