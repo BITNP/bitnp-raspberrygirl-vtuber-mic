@@ -117,6 +117,12 @@ class UdpPacketSender(Protocol):
     async def aclose(self) -> None: ...
 
 
+class EndpointProcessor(Protocol):
+    async def push(self, frame: bytes, rtp_timestamp: int) -> None: ...
+
+    async def flush(self) -> None: ...
+
+
 @dataclass(frozen=True, slots=True)
 class StreamResources:
     capture: BlockCapture
@@ -124,6 +130,8 @@ class StreamResources:
     control: StreamingControl
 
     udp: UdpPacketSender
+
+    endpoint_processor: EndpointProcessor | None = None
 
 
 class StreamRuntime:
@@ -225,6 +233,12 @@ class StreamRuntime:
 
                 await self._resources.udp.send(packet, self._config.rtp_endpoint)
 
+                endpoint_processor = self._resources.endpoint_processor
+                if endpoint_processor is not None:
+                    await endpoint_processor.push(
+                        block, (int(stream.timestamp) - 320) % (1 << 32)
+                    )
+
                 sent_blocks += 1
 
                 if sent_blocks % RTP_LOG_INTERVAL_PACKETS == 0:
@@ -236,6 +250,9 @@ class StreamRuntime:
                     )
 
         finally:
+            endpoint_processor = self._resources.endpoint_processor
+            if endpoint_processor is not None:
+                await endpoint_processor.flush()
             stop_task.cancel()
 
             with suppress(asyncio.CancelledError):

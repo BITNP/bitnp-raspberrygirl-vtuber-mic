@@ -26,6 +26,10 @@ SOUND_FLUSH_EVENT: Final = "media.stream.flush"
 
 VOICE_EVIDENCE_EVENT: Final = "voice.evidence"
 
+ASR_PARTIAL_EVENT: Final = "asr.partial"
+
+ASR_FINAL_EVENT: Final = "asr.final"
+
 MAX_EMBEDDING_DIMENSIONS: Final = 1_024
 _LOGGER = logging.getLogger(__name__)
 
@@ -58,6 +62,34 @@ class VoiceEvidence:
             or not 0 <= self.quality_score <= 1
         ):
             raise ConfigError(key=VOICE_EVIDENCE_EVENT, reason="invalid evidence")
+
+
+@dataclass(frozen=True, slots=True)
+class AsrResult:
+    """A bounded endpoint recognition result sent only over Mic control."""
+
+    stream_id: str
+    segment_id: str
+    rtp_start_timestamp: int
+    rtp_end_timestamp: int
+    cancellation_epoch: int
+    text: str
+    received_at_ms: int
+    confidence: float | None = None
+
+    def __post_init__(self) -> None:
+        if (
+            not self.stream_id
+            or not self.segment_id
+            or self.rtp_start_timestamp < 0
+            or self.rtp_end_timestamp < self.rtp_start_timestamp
+            or self.cancellation_epoch < 0
+            or self.received_at_ms < 0
+            or not self.text.strip()
+            or len(self.text) > 4_000
+            or self.confidence is not None and not 0 <= self.confidence <= 1
+        ):
+            raise ConfigError(key=ASR_FINAL_EVENT, reason="invalid ASR result")
 
 
 class ControlConnection(Protocol):
@@ -300,6 +332,41 @@ class WebSocketStreamingControl:
                     "score": evidence.quality_score,
                 },
             },
+        }
+        await self._connection.send(json.dumps(event, separators=(",", ":")))
+
+    async def send_asr_partial(self, result: AsrResult, *, sequence: int) -> None:
+        await self._send_asr(ASR_PARTIAL_EVENT, result, sequence)
+
+    async def send_asr_final(self, result: AsrResult, *, sequence: int) -> None:
+        await self._send_asr(ASR_FINAL_EVENT, result, sequence)
+
+    async def _send_asr(
+        self, event_type: str, result: AsrResult, sequence: int
+    ) -> None:
+        if sequence < 0:
+            raise ConfigError(key=event_type, reason="invalid sequence")
+        data: dict[str, object] = {
+            "stream_id": result.stream_id,
+            "segment_id": result.segment_id,
+            "rtp_start_timestamp": result.rtp_start_timestamp,
+            "rtp_end_timestamp": result.rtp_end_timestamp,
+            "cancellation_epoch": result.cancellation_epoch,
+            "text": result.text,
+            "received_at_ms": result.received_at_ms,
+        }
+        if result.confidence is not None:
+            data["confidence"] = result.confidence
+        event = {
+            "schema_version": SCHEMA_VERSION,
+            "event_type": event_type,
+            "event_id": str(uuid4()),
+            "source": "mic",
+            "time": datetime.now(UTC).isoformat(),
+            "trace_id": self._context.trace_id,
+            "session_id": self._context.session_id,
+            "seq": sequence,
+            "data": data,
         }
         await self._connection.send(json.dumps(event, separators=(",", ":")))
 

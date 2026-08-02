@@ -27,6 +27,12 @@ TRUSTED_LAN_TOKEN_KEY: Final = "TRUSTED_LAN_TOKEN"
 
 TLS_CA_PATH_KEY: Final = "ORCHESTRATOR_TLS_CA_PATH"
 
+ASR_ENDPOINT_KEY: Final = "MIC_ASR_ENDPOINT"
+
+ASR_MODEL_KEY: Final = "MIC_ASR_MODEL"
+
+ASR_API_KEY_KEY: Final = "MIC_ASR_API_KEY"
+
 PEER_WS_URL_KEYS: Final = (
     "MIC_WS_URL",
     "ASR_WS_URL",
@@ -66,6 +72,12 @@ class ServiceConfig:
 
     tls_ca_path: Path | None = None
 
+    asr_endpoint: str | None = None
+
+    asr_model: str | None = None
+
+    asr_api_key: str | None = None
+
 
 def load_config(env: Mapping[str, str] | None = None) -> ServiceConfig:
 
@@ -83,6 +95,9 @@ def load_config(env: Mapping[str, str] | None = None) -> ServiceConfig:
         health_port=_parse_health_port(source.get(HEALTH_PORT_KEY)),
         trusted_lan_token=_parse_trusted_lan_token(source.get(TRUSTED_LAN_TOKEN_KEY)),
         tls_ca_path=_parse_optional_path(source.get(TLS_CA_PATH_KEY)),
+        asr_endpoint=_optional_text(source.get(ASR_ENDPOINT_KEY)),
+        asr_model=_optional_text(source.get(ASR_MODEL_KEY)),
+        asr_api_key=_optional_text(source.get(ASR_API_KEY_KEY)),
     )
 
 
@@ -138,3 +153,9 @@ def _parse_optional_path(raw_path: str | None) -> Path | None:
         return None
 
     return Path(raw_path.strip())
+
+
+def _optional_text(value: str | None) -> str | None:
+    if value is None or value.strip() == "":
+        return None
+    return value.strip()
