@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass
 from time import monotonic_ns
 
@@ -8,6 +9,8 @@ from mic.asr import AsrEndpoint, EnergyEndpointDetector, OpenAICompatibleAsr
 from mic.camplusplus import CamPlusPlusEmbedding, CamPlusPlusWindow
 from mic.speech_models import SileroVadOnnx
 from mic.stream_control import AsrResult, VoiceEvidence, WebSocketStreamingControl
+
+LOGGER = logging.getLogger(__name__)
 
 
 class MicAsrEndpointProcessor:
@@ -86,7 +89,18 @@ class MicAsrEndpointProcessor:
 
         if not isinstance(endpoint, AsrEndpoint):
             return
+        LOGGER.debug(
+            "mic_asr_endpoint_ready stream=%s audio_bytes=%d duration_ms=%d",
+            self._stream_id,
+            len(endpoint.pcm16le),
+            len(endpoint.pcm16le) // 32,
+        )
         recognition = await self._asr.transcribe(endpoint)
+        LOGGER.debug(
+            "mic_asr_request_completed stream=%s text_chars=%d",
+            self._stream_id,
+            len(recognition.text),
+        )
         if not recognition.text:
             return
         self._segment += 1
@@ -105,6 +119,11 @@ class MicAsrEndpointProcessor:
                 sequence=self._sequence,
             )
             self._sequence += 1
+            LOGGER.debug(
+                "mic_asr_final_sent stream=%s segment=%s",
+                self._stream_id,
+                self._segment,
+            )
 
     async def emit_voice_evidence(
         self, window: CamPlusPlusWindow, embedding: CamPlusPlusEmbedding, revision: str
