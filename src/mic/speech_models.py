@@ -142,9 +142,16 @@ def _mag_pha_stft(samples: numpy.ndarray) -> tuple[numpy.ndarray, numpy.ndarray,
     signal = numpy.pad(samples, (_N_FFT // 2, _N_FFT // 2), mode="reflect")
     window = numpy.hanning(_N_FFT + 1)[:-1].astype(numpy.float32)
     count = 1 + (signal.size - _N_FFT) // _HOP
-    frames = numpy.stack([signal[index * _HOP : index * _HOP + _N_FFT] * window for index in range(count)])
+    frames = numpy.stack(
+        [
+            signal[index * _HOP : index * _HOP + _N_FFT] * window
+            for index in range(count)
+        ]
+    )
     spectrum = numpy.fft.rfft(frames, axis=1).T
-    return numpy.abs(spectrum).astype(numpy.float32) ** _COMPRESS, numpy.angle(spectrum).astype(numpy.float32), padded
+    magnitude = numpy.sqrt(spectrum.real**2 + spectrum.imag**2 + 1e-9)
+    phase = numpy.arctan2(spectrum.imag, spectrum.real + 1e-5)
+    return magnitude.astype(numpy.float32) ** _COMPRESS, phase.astype(numpy.float32), padded
 
 
 def _mag_pha_istft(magnitude: numpy.ndarray, phase: numpy.ndarray, padded: int) -> numpy.ndarray:
