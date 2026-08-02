@@ -97,9 +97,10 @@ class MicAsrEndpointProcessor:
         )
         recognition = await self._asr.transcribe(endpoint)
         LOGGER.debug(
-            "mic_asr_request_completed stream=%s text_chars=%d",
+            "mic_asr_response stream=%s text=%r confidence=%s",
             self._stream_id,
-            len(recognition.text),
+            recognition.text,
+            recognition.confidence,
         )
         if not recognition.text:
             return
@@ -120,9 +121,10 @@ class MicAsrEndpointProcessor:
             )
             self._sequence += 1
             LOGGER.debug(
-                "mic_asr_final_sent stream=%s segment=%s",
+                "mic_asr_final_sent stream=%s segment=%s text=%r",
                 self._stream_id,
                 self._segment,
+                recognition.text,
             )
 
     async def emit_voice_evidence(
