@@ -1,4 +1,5 @@
 import asyncio  # noqa: ANYIO_OK - mic-stream requires asyncio UDP transport.
+import contextlib
 import logging
 import os
 
@@ -85,14 +86,39 @@ async def run_stream() -> int:
                 window_ms=service_config.zipenhancer_window_ms,
             )
         )
-        await run_continuous_pipeline(
-            capture,
-            processor,
-            start_timestamp=config.start_timestamp,
-            enhancer=enhancer,
-            campp_streamer=None if camplusplus is None else CamPlusPlusStreamingProcessor(),
-            campp_model=camplusplus,
+        pipeline_task = asyncio.create_task(
+            run_continuous_pipeline(
+                capture,
+                processor,
+                start_timestamp=config.start_timestamp,
+                enhancer=enhancer,
+                campp_streamer=None
+                if camplusplus is None
+                else CamPlusPlusStreamingProcessor(),
+                campp_model=camplusplus,
+            )
         )
+        control_closed_task = asyncio.create_task(control.wait_closed())
+        try:
+            done, _ = await asyncio.wait(
+                (pipeline_task, control_closed_task),
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if pipeline_task in done:
+                await pipeline_task
+            else:
+                await control_closed_task
+                logging.getLogger(__name__).info(
+                    "mic_control_disconnected session=%s; stopping capture",
+                    config.session_id,
+                )
+                pipeline_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await pipeline_task
+        finally:
+            control_closed_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await control_closed_task
     finally:
         await capture.aclose()
         await control.aclose()

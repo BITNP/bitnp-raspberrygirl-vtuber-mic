@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from uuid import uuid4
 
 from websockets.asyncio.client import connect
+from websockets.exceptions import ConnectionClosed
 
 from mic.config import ConfigError, ServiceConfig
 from mic.rtp import MIC_RTP_SSRC
@@ -214,6 +215,14 @@ class WebSocketStreamingControl:
             "data": {"stream_id": stream_id},
         }
         await self._connection.send(json.dumps(event, separators=(",", ":")))
+
+    async def wait_closed(self) -> None:
+        """Wait for the control peer to close without interpreting inbound effects."""
+        try:
+            while True:
+                _ = await self._connection.recv()
+        except ConnectionClosed:
+            _LOGGER.debug("mic_control_peer_closed session=%s", self._context.session_id)
 
     async def wait_source_ready(self, registration: SourceRegistration) -> None:
 

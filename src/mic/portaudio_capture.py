@@ -1,5 +1,6 @@
 
 import asyncio  # noqa: ANYIO_OK - PortAudio reads run off the asyncio UDP event loop.
+import contextlib
 import sys
 from dataclasses import dataclass
 from types import TracebackType
@@ -179,9 +180,17 @@ class PortAudioBlockCapture:
         if stream is None:
             raise CaptureStateError()
 
-        payload, _overflowed = await asyncio.to_thread(
-            stream.read, PCM16_MONO_20MS_FRAME_SAMPLES
+        read_task = asyncio.create_task(
+            asyncio.to_thread(stream.read, PCM16_MONO_20MS_FRAME_SAMPLES)
         )
+        try:
+            payload, _overflowed = await asyncio.shield(read_task)
+        except asyncio.CancelledError:
+            # A thread cannot be cancelled. Let the bounded 20 ms PortAudio read
+            # return before the caller closes the stream during cleanup.
+            with contextlib.suppress(Exception):
+                await read_task
+            raise
 
         canonical_payload = _normalize_pcm16le(payload, self._byteorder)
 
