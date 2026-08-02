@@ -198,6 +198,23 @@ class WebSocketStreamingControl:
             registration.stream_id,
         )
 
+    async def register_input(self, stream_id: str) -> None:
+        """Register the control-only Mic input; no audio endpoint is exposed."""
+        if not stream_id:
+            raise ConfigError(key="mic.input.register", reason="stream_id is required")
+        event = {
+            "schema_version": SCHEMA_VERSION,
+            "event_type": "mic.input.register",
+            "event_id": str(uuid4()),
+            "source": "mic",
+            "time": datetime.now(UTC).isoformat(),
+            "trace_id": self._context.trace_id,
+            "session_id": self._context.session_id,
+            "seq": 0,
+            "data": {"stream_id": stream_id},
+        }
+        await self._connection.send(json.dumps(event, separators=(",", ":")))
+
     async def wait_source_ready(self, registration: SourceRegistration) -> None:
 
         raw_event = await self._connection.recv()

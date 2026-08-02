@@ -308,8 +308,6 @@ def test_stream_config_requires_wss_except_for_explicit_loopback_ws() -> None:
 
     base_environment = {
         "ORCHESTRATOR_WS_URL": "ws://127.0.0.1:8765/control",
-        "ORCHESTRATOR_RTP_HOST": "127.0.0.1",
-        "ORCHESTRATOR_RTP_PORT": "5004",
         "BITNP_MIC_RTP_STREAM_ID": "mic-primary",
         "BITNP_MIC_RTP_TIMESTAMP": "96000",
         "BITNP_TRACE_ID": "trace-mic-001",
@@ -325,4 +323,4 @@ def test_stream_config_requires_wss_except_for_explicit_loopback_ws() -> None:
         {**base_environment, "MIC_ALLOW_LOOPBACK_WS": "true"}
     )
 
-    assert config.rtp_endpoint == RtpEndpoint(host="127.0.0.1", port=RtpPort(5004))
+    assert config.rtp_endpoint == RtpEndpoint(host="", port=RtpPort(0))

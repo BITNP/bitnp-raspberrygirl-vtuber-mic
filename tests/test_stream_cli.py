@@ -1,68 +1,69 @@
 import asyncio
-from dataclasses import dataclass
 
 from mic.config import OrchestratorWsUrl, ServiceConfig
 from mic.stream_cli import run_stream
-from mic.stream_control import ControlContext
-from mic.streaming import RtpEndpoint, RtpPort, StreamResources, StreamingRuntimeConfig
+from mic.streaming import RtpEndpoint, RtpPort, StreamingRuntimeConfig
 
 
-@dataclass(frozen=True, slots=True)
-class _Control:
-    marker: str = "control"
-
-
-def test_run_stream_composes_only_production_control_capture_and_udp(
-    monkeypatch,
-) -> None:
-    # Given: a configured Mic stream and isolated production-adapter constructors.
+def test_run_stream_is_control_only_and_never_constructs_udp(monkeypatch) -> None:
     config = StreamingRuntimeConfig(
         stream_id="mic-primary",
         start_timestamp=96_000,
-        rtp_endpoint=RtpEndpoint("orchestrator.example.test", RtpPort(5004)),
-        udp_bind_endpoint=RtpEndpoint("0.0.0.0", RtpPort(0)),
+        rtp_endpoint=RtpEndpoint("", RtpPort(0)),
+        udp_bind_endpoint=RtpEndpoint("", RtpPort(0)),
         max_blocks=1,
         service_config=ServiceConfig(
-            OrchestratorWsUrl("wss://orchestrator.example.test/control")
+            OrchestratorWsUrl("wss://orchestrator.example.test/control"),
+            asr_endpoint="https://asr.example.test/v1/audio/transcriptions",
+            asr_model="asr",
         ),
     )
-    control = _Control()
-    captured: list[tuple[ServiceConfig, ControlContext]] = []
+    calls: list[object] = []
 
-    async def open_control(
-        service_config: ServiceConfig, context: ControlContext
-    ) -> _Control:
-        captured.append((service_config, context))
-        return control
+    class Control:
+        async def register_input(self, stream_id: str) -> None:
+            calls.append(("register", stream_id))
+
+        async def aclose(self) -> None:
+            calls.append("control_closed")
 
     class Capture:
         def __init__(self, *, device: object) -> None:
-            self.device = device
+            _ = device
 
-    class Udp:
-        pass
+        async def open(self) -> None:
+            calls.append("capture_open")
 
-    class Runtime:
-        def __init__(
-            self, received_config: StreamingRuntimeConfig, resources: StreamResources
-        ) -> None:
-            assert received_config is config
-            self.resources = resources
+        async def read_block(self) -> bytes | None:
+            return None
 
-        async def run(self) -> None:
-            assert type(self.resources.capture) is Capture
-            assert self.resources.control is control
-            assert type(self.resources.udp) is Udp
+        async def aclose(self) -> None:
+            calls.append("capture_closed")
+
+    class Processor:
+        def __init__(self, *args, **kwargs) -> None:
+            _ = args, kwargs
+
+        async def flush(self) -> None:
+            calls.append("processor_flush")
+
+        async def push(self, frame: bytes, timestamp: int) -> None:
+            raise AssertionError((frame, timestamp))
+
+    async def open_control(*args, **kwargs) -> Control:
+        _ = args, kwargs
+        return Control()
 
     monkeypatch.setattr("mic.stream_cli.load_streaming_runtime_config", lambda: config)
     monkeypatch.setattr("mic.stream_cli.WebSocketStreamingControl.open", open_control)
     monkeypatch.setattr("mic.stream_cli.PortAudioBlockCapture", Capture)
-    monkeypatch.setattr("mic.stream_cli.AsyncioUdpSender", Udp)
-    monkeypatch.setattr("mic.stream_cli.StreamRuntime", Runtime)
+    monkeypatch.setattr("mic.stream_cli.MicAsrEndpointProcessor", Processor)
 
-    # When: the mic-stream composition root starts.
-    exit_code = asyncio.run(run_stream())
-
-    # Then: it wires the configured Orchestrator control into the only streaming runtime.
-    assert exit_code == 0
-    assert captured[0][0] is config.service_config
+    assert asyncio.run(run_stream()) == 0
+    assert calls == [
+        ("register", "mic-primary"),
+        "capture_open",
+        "processor_flush",
+        "capture_closed",
+        "control_closed",
+    ]

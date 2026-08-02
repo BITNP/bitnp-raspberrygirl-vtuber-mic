@@ -3,7 +3,8 @@ from __future__ import annotations
 from time import monotonic_ns
 
 from mic.asr import EnergyEndpointDetector, OpenAICompatibleAsr
-from mic.stream_control import AsrResult, WebSocketStreamingControl
+from mic.camplusplus import CamPlusPlusOnnx
+from mic.stream_control import AsrResult, VoiceEvidence, WebSocketStreamingControl
 
 
 class MicAsrEndpointProcessor:
@@ -15,11 +16,13 @@ class MicAsrEndpointProcessor:
         *,
         stream_id: str,
         asr: OpenAICompatibleAsr,
+        camplusplus: CamPlusPlusOnnx | None = None,
         cancellation_epoch: int = 0,
     ) -> None:
         self._control = control
         self._stream_id = stream_id
         self._asr = asr
+        self._camplusplus = camplusplus
         self._epoch = cancellation_epoch
         self._detector = EnergyEndpointDetector()
         self._sequence = 1
@@ -43,6 +46,22 @@ class MicAsrEndpointProcessor:
         if not isinstance(endpoint, AsrEndpoint):
             return
         recognition = await self._asr.transcribe(endpoint)
+        camplusplus = self._camplusplus
+        if camplusplus is not None:
+            embedding = camplusplus.embed(endpoint)
+            await self._control.send_voice_evidence(
+                VoiceEvidence(
+                    stream_id=self._stream_id,
+                    rtp_start_timestamp=endpoint.rtp_start_timestamp,
+                    rtp_end_timestamp=endpoint.rtp_end_timestamp,
+                    embedding_model_revision=camplusplus.revision,
+                    embedding=embedding.values,
+                    speech_ms=len(endpoint.pcm16le) * 1000 // 32_000,
+                    quality_score=embedding.quality_score,
+                ),
+                sequence=self._sequence,
+            )
+            self._sequence += 1
         if not recognition.text:
             return
         self._segment += 1

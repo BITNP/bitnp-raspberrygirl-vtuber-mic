@@ -33,6 +33,10 @@ ASR_MODEL_KEY: Final = "MIC_ASR_MODEL"
 
 ASR_API_KEY_KEY: Final = "MIC_ASR_API_KEY"
 
+CAMPP_MODEL_PATH_KEY: Final = "MIC_CAMPP_MODEL_PATH"
+
+CAMPP_MODEL_REVISION_KEY: Final = "MIC_CAMPP_MODEL_REVISION"
+
 PEER_WS_URL_KEYS: Final = (
     "MIC_WS_URL",
     "ASR_WS_URL",
@@ -78,6 +82,10 @@ class ServiceConfig:
 
     asr_api_key: str | None = None
 
+    campp_model_path: Path | None = None
+
+    campp_model_revision: str | None = None
+
 
 def load_config(env: Mapping[str, str] | None = None) -> ServiceConfig:
 
@@ -98,6 +106,8 @@ def load_config(env: Mapping[str, str] | None = None) -> ServiceConfig:
         asr_endpoint=_optional_text(source.get(ASR_ENDPOINT_KEY)),
         asr_model=_optional_text(source.get(ASR_MODEL_KEY)),
         asr_api_key=_optional_text(source.get(ASR_API_KEY_KEY)),
+        campp_model_path=_parse_optional_path(source.get(CAMPP_MODEL_PATH_KEY)),
+        campp_model_revision=_optional_text(source.get(CAMPP_MODEL_REVISION_KEY)),
     )
 
 

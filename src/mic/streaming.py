@@ -309,14 +309,10 @@ def load_streaming_runtime_config(
     return StreamingRuntimeConfig(
         stream_id=_required_text(source, RTP_STREAM_ID_KEY),
         start_timestamp=_unsigned_timestamp(source),
-        rtp_endpoint=RtpEndpoint(
-            host=_required_text(source, ORCHESTRATOR_RTP_HOST_KEY),
-            port=_port(source, ORCHESTRATOR_RTP_PORT_KEY),
-        ),
-        udp_bind_endpoint=RtpEndpoint(
-            host=source.get(MIC_RTP_BIND_HOST_KEY, "0.0.0.0").strip(),
-            port=_port(source, MIC_RTP_BIND_PORT_KEY, default="0", allow_zero=True),
-        ),
+        # Compatibility-only fields for the retired UDP runtime. mic-stream
+        # itself is control-only and never opens or sends an RTP socket.
+        rtp_endpoint=RtpEndpoint(host="", port=RtpPort(0)),
+        udp_bind_endpoint=RtpEndpoint(host="", port=RtpPort(0)),
         max_blocks=_max_blocks(source),
         service_config=service_config,
         device=_capture_device(source),

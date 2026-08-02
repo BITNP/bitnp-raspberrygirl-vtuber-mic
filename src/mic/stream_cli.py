@@ -4,15 +4,11 @@ import os
 
 from mic.asr import OpenAICompatibleAsr
 from mic.asr_runtime import MicAsrEndpointProcessor
+from mic.camplusplus import CamPlusPlusOnnx
 from mic.config import ConfigError
 from mic.portaudio_capture import PortAudioBlockCapture
 from mic.stream_control import ControlContext, WebSocketStreamingControl
-from mic.streaming import (
-    AsyncioUdpSender,
-    StreamResources,
-    StreamRuntime,
-    load_streaming_runtime_config,
-)
+from mic.streaming import load_streaming_runtime_config
 
 
 async def run_stream() -> int:
@@ -31,27 +27,43 @@ async def run_stream() -> int:
         ControlContext(trace_id=config.trace_id, session_id=config.session_id),
     )
 
-    endpoint_processor = None
-    if service_config.asr_endpoint is not None or service_config.asr_model is not None:
-        if service_config.asr_endpoint is None or service_config.asr_model is None:
-            raise ConfigError(key="MIC_ASR_ENDPOINT", reason="endpoint and model must be configured together")
-        endpoint_processor = MicAsrEndpointProcessor(
-            control,
-            stream_id=config.stream_id,
-            asr=OpenAICompatibleAsr(
-                service_config.asr_endpoint,
-                service_config.asr_model,
-                service_config.asr_api_key,
-            ),
+    if service_config.asr_endpoint is None or service_config.asr_model is None:
+        raise ConfigError(key="MIC_ASR_ENDPOINT", reason="endpoint and model required")
+    if (service_config.campp_model_path is None) != (
+        service_config.campp_model_revision is None
+    ):
+        raise ConfigError(
+            key="MIC_CAMPP_MODEL_PATH", reason="model and revision must be configured together"
         )
-    resources = StreamResources(
-        capture=PortAudioBlockCapture(device=config.device),
-        control=control,
-        udp=AsyncioUdpSender(),
-        endpoint_processor=endpoint_processor,
+    camplusplus = (
+        None
+        if service_config.campp_model_path is None
+        else CamPlusPlusOnnx(
+            service_config.campp_model_path, service_config.campp_model_revision or ""
+        )
     )
-
-    await StreamRuntime(config, resources).run()
+    processor = MicAsrEndpointProcessor(
+        control,
+        stream_id=config.stream_id,
+        asr=OpenAICompatibleAsr(
+            service_config.asr_endpoint,
+            service_config.asr_model,
+            service_config.asr_api_key,
+        ),
+        camplusplus=camplusplus,
+    )
+    capture = PortAudioBlockCapture(device=config.device)
+    await control.register_input(config.stream_id)
+    await capture.open()
+    try:
+        timestamp = config.start_timestamp
+        while (block := await capture.read_block()) is not None:
+            await processor.push(block, timestamp)
+            timestamp = (timestamp + 320) % (1 << 32)
+    finally:
+        await processor.flush()
+        await capture.aclose()
+        await control.aclose()
 
     return 0
 
