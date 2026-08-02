@@ -71,11 +71,20 @@ class OpenAICompatibleAsr:
 
 
 class EnergyEndpointDetector:
-    """Bounded VAD/endpoint detector for fixed 20 ms PCM16 frames."""
+    """VAD/endpoint detector with a hard cap for fixed 20 ms PCM16 frames."""
 
-    def __init__(self, *, threshold: int = 300, trailing_silence_frames: int = 20) -> None:
+    def __init__(
+        self,
+        *,
+        threshold: int = 300,
+        trailing_silence_frames: int = 20,
+        max_frames: int = 1_500,
+    ) -> None:
+        if max_frames < 1:
+            raise ValueError("max_frames must be positive")
         self._threshold = threshold
         self._trailing_silence_frames = trailing_silence_frames
+        self._max_frames = max_frames
         self._frames: list[bytes] = []
         self._start: int | None = None
         self._last_end = 0
@@ -94,6 +103,8 @@ class EnergyEndpointDetector:
         self._frames.append(frame)
         self._last_end = (rtp_timestamp + 320) % (1 << 32)
         self._silence = 0 if is_speech else self._silence + 1
+        if len(self._frames) >= self._max_frames:
+            return self.flush()
         if self._silence < self._trailing_silence_frames:
             return None
         return self.flush()

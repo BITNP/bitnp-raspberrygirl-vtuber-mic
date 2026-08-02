@@ -45,6 +45,31 @@ def test_load_config_uses_configured_ca_bundle_path() -> None:
     assert config.tls_ca_path == Path("/etc/bitnp/internal-ca.pem")
 
 
+def test_load_config_reads_optional_speech_models_and_endpoint_vad() -> None:
+    config = load_config(
+        {
+            "ORCHESTRATOR_WS_URL": "wss://orchestrator.local/ws",
+            "MIC_ZIPENHANCER_MODEL_PATH": "/models/zipenhancer.onnx",
+            "MIC_VAD_MODEL_PATH": "/models/silero.onnx",
+            "MIC_ASR_ENDPOINT_INCLUDES_VAD": "true",
+        }
+    )
+
+    assert config.zipenhancer_model_path == Path("/models/zipenhancer.onnx")
+    assert config.vad_model_path == Path("/models/silero.onnx")
+    assert config.asr_endpoint_includes_vad is True
+
+
+def test_load_config_rejects_invalid_endpoint_vad_flag() -> None:
+    with pytest.raises(ConfigError, match="MIC_ASR_ENDPOINT_INCLUDES_VAD"):
+        load_config(
+            {
+                "ORCHESTRATOR_WS_URL": "wss://orchestrator.local/ws",
+                "MIC_ASR_ENDPOINT_INCLUDES_VAD": "yes",
+            }
+        )
+
+
 @pytest.mark.parametrize("peer_url_key", PEER_WS_URL_KEYS)
 def test_load_config_rejects_every_peer_websocket_url(peer_url_key: str) -> None:
 

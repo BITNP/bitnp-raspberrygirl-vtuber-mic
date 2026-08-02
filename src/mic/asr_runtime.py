@@ -33,7 +33,12 @@ class MicAsrEndpointProcessor:
         self._vad_buffer = b""
         self._last_vad_speech = False
         self._epoch = cancellation_epoch
-        self._detector = EnergyEndpointDetector()
+        # The OpenAI-compatible multipart transcription boundary is batch-only.
+        # When it owns VAD, submit bounded two-second windows instead of keeping
+        # an unbounded capture until the device closes.
+        self._detector = EnergyEndpointDetector(
+            max_frames=100 if asr_endpoint_includes_vad else 1_500
+        )
         self._sequence = 1
         self._segment = 0
 
