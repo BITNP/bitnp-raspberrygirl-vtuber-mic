@@ -1,5 +1,6 @@
 
 import asyncio  # noqa: ANYIO_OK - exercises asyncio cancellation and UDP seams.
+import logging
 from dataclasses import dataclass, field
 
 import pytest
@@ -198,6 +199,30 @@ def test_runtime_packetizes_one_rtp_frame_per_capture_block() -> None:
     assert [packet for packet, _endpoint in udp.sent] == [
         b"\x80\x60\x00\x00\x00\x01\x77\x00MIC1" + b"\x20\x10" * 320,
         b"\x80\x60\x00\x01\x00\x01\x78\x40MIC1" + b"\x40\x30" * 320,
+    ]
+
+
+def test_runtime_logs_rtp_send_every_100_packets(caplog: pytest.LogCaptureFixture) -> None:
+    # Given: 200 canonical capture blocks, which make two log intervals.
+
+    capture = FakeCapture(blocks=[b"\x10\x20" * 320] * 200)
+    udp = FakeUdp()
+    control = FakeControl(capture=capture, udp=udp)
+
+    # When: the bounded runtime sends the RTP packets.
+
+    with caplog.at_level(logging.DEBUG, logger="mic.streaming"):
+        asyncio.run(
+            StreamRuntime(
+                _config(max_blocks=200), StreamResources(capture, control, udp)
+            ).run()
+        )
+
+    # Then: packet-level debug logging is sampled at 100-packet boundaries.
+
+    assert [record.getMessage() for record in caplog.records if record.msg.startswith("mic_rtp_sent")] == [
+        "mic_rtp_sent stream=mic-primary packets_sent=100 packet_bytes=652",
+        "mic_rtp_sent stream=mic-primary packets_sent=200 packet_bytes=652",
     ]
 
 

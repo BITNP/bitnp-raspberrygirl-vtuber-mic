@@ -33,6 +33,8 @@ MIC_ALLOW_LOOPBACK_WS_KEY: Final = "MIC_ALLOW_LOOPBACK_WS"
 
 MAX_CAPTURE_BLOCKS_KEY: Final = "MIC_MAX_CAPTURE_BLOCKS"
 
+RTP_LOG_INTERVAL_PACKETS: Final = 100
+
 RTP_STREAM_ID_KEY: Final = "BITNP_MIC_RTP_STREAM_ID"
 
 RTP_TIMESTAMP_KEY: Final = "BITNP_MIC_RTP_TIMESTAMP"
@@ -222,13 +224,16 @@ class StreamRuntime:
                 packet, stream = packetize_l16_pcm16le(block, stream)
 
                 await self._resources.udp.send(packet, self._config.rtp_endpoint)
-                _LOGGER.debug(
-                    "mic_rtp_sent stream=%s packet_bytes=%d",
-                    registration.stream_id,
-                    len(packet),
-                )
 
                 sent_blocks += 1
+
+                if sent_blocks % RTP_LOG_INTERVAL_PACKETS == 0:
+                    _LOGGER.debug(
+                        "mic_rtp_sent stream=%s packets_sent=%d packet_bytes=%d",
+                        registration.stream_id,
+                        sent_blocks,
+                        len(packet),
+                    )
 
         finally:
             stop_task.cancel()
