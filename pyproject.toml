@@ -38,5 +38,6 @@ markers = [
 ]
 
 [tool.pyright]
+typeCheckingMode = "standard"
 venvPath = "."
 venv = ".venv"
