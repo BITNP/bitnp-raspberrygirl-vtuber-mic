@@ -103,6 +103,10 @@ class CamPlusPlusOnnx:
             raise ConfigError(key="MIC_CAMPP_MODEL_PATH", reason="must have [batch, frames, 80] feature input")
         if inputs[0].shape[-1] != 80 or inputs[0].type != "tensor(float)":
             raise ConfigError(key="MIC_CAMPP_MODEL_PATH", reason="feature input must be float32 with 80 bins")
+        if isinstance(inputs[0].shape[1], int):
+            raise ConfigError(
+                key="MIC_CAMPP_MODEL_PATH", reason="feature input must have a dynamic frame axis"
+            )
         if len(outputs) != 1 or outputs[0].name != "embedding" or len(outputs[0].shape) != 2:
             raise ConfigError(key="MIC_CAMPP_MODEL_PATH", reason="must have [batch, dimensions] embedding output")
         if outputs[0].shape[-1] not in _EMBEDDING_DIMENSIONS or outputs[0].type != "tensor(float)":
@@ -113,9 +117,12 @@ class CamPlusPlusOnnx:
         features = self._fbank.extract(pcm16le)
         if not features.size:
             raise ConfigError(key="MIC_CAMPP_MODEL_PATH", reason="insufficient samples for FBank")
-        output = numpy.asarray(
+        raw_output = numpy.asarray(
             self._session.run(None, {self._input_name: features[numpy.newaxis, :, :]})[0]
-        ).reshape(-1).astype(numpy.float64)
+        )
+        if raw_output.shape not in {(1, 192), (1, 512)}:
+            raise ConfigError(key="MIC_CAMPP_MODEL_PATH", reason="invalid embedding output shape")
+        output = raw_output.reshape(-1).astype(numpy.float64)
         norm = float(numpy.linalg.norm(output))
         if output.size not in _EMBEDDING_DIMENSIONS or not numpy.isfinite(output).all() or norm == 0:
             raise ConfigError(key="MIC_CAMPP_MODEL_PATH", reason="invalid embedding output")

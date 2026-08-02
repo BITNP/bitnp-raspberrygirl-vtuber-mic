@@ -16,19 +16,30 @@ class _Item:
 
 
 class _Session:
-    def __init__(self, output_shape: list[int | str] | None = None) -> None:
+    def __init__(
+        self,
+        output_shape: list[int | str] | None = None,
+        input_shape: list[int | str] | None = None,
+        runtime_output: numpy.ndarray | None = None,
+    ) -> None:
         self.calls: list[dict[str, numpy.ndarray]] = []
         self._output_shape = output_shape or [1, 192]
+        self._input_shape = input_shape or [1, "frames", 80]
+        self._runtime_output = runtime_output
 
     def get_inputs(self) -> list[_Item]:
-        return [_Item("feature", [1, "frames", 80])]
+        return [_Item("feature", self._input_shape)]
 
     def get_outputs(self) -> list[_Item]:
         return [_Item("embedding", self._output_shape)]
 
     def run(self, _outputs: object, values: dict[str, numpy.ndarray]) -> list[numpy.ndarray]:
         self.calls.append(values)
-        return [numpy.ones((1, 192), dtype=numpy.float32)]
+        return [
+            self._runtime_output
+            if self._runtime_output is not None
+            else numpy.ones((1, 192), dtype=numpy.float32)
+        ]
 
 
 def _fbank_config(path: Path) -> Path:
@@ -75,3 +86,28 @@ def test_camplusplus_rejects_nonofficial_embedding_dimensions(monkeypatch, tmp_p
 
     with pytest.raises(ConfigError, match="embedding"):
         CamPlusPlusOnnx(model_path, "campplus-v1", _fbank_config(tmp_path / "fbank.json"))
+
+
+def test_camplusplus_requires_dynamic_frame_axis(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        "mic.camplusplus.onnxruntime.InferenceSession",
+        lambda *_args, **_kwargs: _Session(input_shape=[1, 345, 80]),
+    )
+    model_path = tmp_path / "campplus.onnx"
+    model_path.touch()
+
+    with pytest.raises(ConfigError, match="dynamic frame axis"):
+        CamPlusPlusOnnx(model_path, "campplus-v1", _fbank_config(tmp_path / "fbank.json"))
+
+
+def test_camplusplus_rejects_invalid_runtime_embedding_shape(monkeypatch, tmp_path: Path) -> None:
+    session = _Session(runtime_output=numpy.ones((192,), dtype=numpy.float32))
+    monkeypatch.setattr(
+        "mic.camplusplus.onnxruntime.InferenceSession", lambda *_args, **_kwargs: session
+    )
+    model_path = tmp_path / "campplus.onnx"
+    model_path.touch()
+    adapter = CamPlusPlusOnnx(model_path, "campplus-v1", _fbank_config(tmp_path / "fbank.json"))
+
+    with pytest.raises(ConfigError, match="output shape"):
+        adapter.embed_pcm16le((numpy.arange(24_000) % 500).astype("<i2").tobytes())
