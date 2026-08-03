@@ -1,11 +1,18 @@
 
+import asyncio
+import threading
 from dataclasses import dataclass, field
 from types import TracebackType
 from typing import Self
 
 import pytest
 
-from mic.portaudio_capture import CaptureDevice, PortAudioCaptureSource, RawInputStream
+from mic.portaudio_capture import (
+    CaptureDevice,
+    PortAudioBlockCapture,
+    PortAudioCaptureSource,
+    RawInputStream,
+)
 
 
 @dataclass(slots=True)
@@ -161,3 +168,81 @@ def test_capture_closes_stream_when_read_raises() -> None:
     assert stream.entered is True
 
     assert stream.exited is True
+
+
+def test_block_capture_waits_for_worker_read_before_close_after_second_cancel() -> None:
+
+    asyncio.run(_close_waits_for_cancelled_worker_read())
+
+
+async def _close_waits_for_cancelled_worker_read() -> None:
+
+    entered_read = threading.Event()
+    release_read = threading.Event()
+    calls: list[str] = []
+
+    class Stream:
+
+        def __enter__(self) -> Self:
+
+            calls.append("open")
+
+            return self
+
+        def __exit__(
+            self,
+            exception_type: type[BaseException] | None,
+            exception: BaseException | None,
+            traceback: TracebackType | None,
+        ) -> None:
+
+            _ = exception_type, exception, traceback
+
+            calls.append("close")
+
+        def read(self, frames: int) -> tuple[bytes, bool]:
+
+            assert frames == 320
+
+            entered_read.set()
+
+            assert release_read.wait(timeout=1)
+
+            return b"\x00\x00" * 320, False
+
+    stream = Stream()
+
+    def stream_factory(device: CaptureDevice) -> RawInputStream:
+
+        _ = device
+
+        return stream
+
+    capture = PortAudioBlockCapture(device=None, stream_factory=stream_factory)
+
+    await capture.open()
+
+    read_task = asyncio.create_task(capture.read_block())
+
+    assert await asyncio.to_thread(entered_read.wait, 1)
+
+    read_task.cancel()
+
+    await asyncio.sleep(0)
+
+    read_task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await read_task
+
+    close_task = asyncio.create_task(capture.aclose())
+
+    await asyncio.sleep(0)
+
+    assert calls == ["open"]
+
+    release_read.set()
+
+    await close_task
+
+    assert calls == ["open", "close"]

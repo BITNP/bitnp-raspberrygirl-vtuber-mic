@@ -152,7 +152,13 @@ class PortAudioCaptureSource:
 
 class PortAudioBlockCapture:
 
-    __slots__ = ("_byteorder", "_device", "_stream", "_stream_factory")
+    __slots__ = (
+        "_byteorder",
+        "_device",
+        "_read_task",
+        "_stream",
+        "_stream_factory",
+    )
 
     def __init__(
         self,
@@ -169,6 +175,8 @@ class PortAudioBlockCapture:
 
         self._stream: RawInputStream | None = None
 
+        self._read_task: asyncio.Task[tuple[bytes, bool]] | None = None
+
     async def open(self) -> None:
 
         self._stream = await asyncio.to_thread(self._open_stream)
@@ -183,14 +191,17 @@ class PortAudioBlockCapture:
         read_task = asyncio.create_task(
             asyncio.to_thread(stream.read, PCM16_MONO_20MS_FRAME_SAMPLES)
         )
+        self._read_task = read_task
         try:
             payload, _overflowed = await asyncio.shield(read_task)
         except asyncio.CancelledError:
             # A thread cannot be cancelled. Let the bounded 20 ms PortAudio read
             # return before the caller closes the stream during cleanup.
-            with contextlib.suppress(Exception):
-                await read_task
+            await _drain_read_task(read_task)
             raise
+        finally:
+            if read_task.done():
+                self._read_task = None
 
         canonical_payload = _normalize_pcm16le(payload, self._byteorder)
 
@@ -205,6 +216,14 @@ class PortAudioBlockCapture:
 
         if stream is not None:
             self._stream = None
+
+            read_task = self._read_task
+            if read_task is not None:
+                # Teardown may run after a second cancellation (for example,
+                # systemd stopping the service). Never close a PortAudio stream
+                # while its worker thread is still inside ``read``.
+                await _drain_read_task(read_task)
+                self._read_task = None
 
             await asyncio.to_thread(stream.__exit__, None, None, None)
 
@@ -225,3 +244,16 @@ def _normalize_pcm16le(payload: bytes, byteorder: HostByteOrder) -> bytes:
     return b"".join(
         payload[index : index + 2][::-1] for index in range(0, len(payload), 2)
     )
+
+
+async def _drain_read_task(read_task: asyncio.Task[tuple[bytes, bool]]) -> None:
+
+    try:
+        with contextlib.suppress(Exception):
+            await asyncio.shield(read_task)
+    except asyncio.CancelledError:
+        # Finish the already-started PortAudio read before allowing teardown to
+        # continue. ``shield`` keeps the worker task alive across cancellation.
+        with contextlib.suppress(Exception):
+            await asyncio.shield(read_task)
+        raise
