@@ -20,7 +20,7 @@ ORCHESTRATOR_WS_URL=wss://orchestrator.example.test/control uv run mic-health
 
 ## 使用指南
 
-部署时根据 `.env.example` 配置 Orchestrator WSS control URL、`TRUSTED_LAN_TOKEN`、`ORCHESTRATOR_TLS_CA_PATH`、Mic ASR endpoint/model、可选 ZipEnhancer ONNX 路径和 `MIC_ZIPENHANCER_WINDOW_MS`、Silero VAD ONNX 路径、CAM++ 模型及官方 `fbank_config.json`、stream ID、timestamp、trace ID 和 session ID。CAM++ 启用时必须同时配置模型、revision 和 `MIC_CAMPP_FBANK_CONFIG_PATH`；Mic 用 1.5 秒窗口、0.75 秒步进在增强音频上产生临时 voice evidence，不持久化 embedding。ZipEnhancer 必须使用官方导出的 `noisy_mag` / `noisy_pha` 双输入 ONNX，窗口必须为 20 ms 的整数倍，默认 500 ms；Silero 模型必须有 `input`、`state`、`sr` 输入，CAM++ 启用时始终需要本地 Silero VAD。当前 OpenAI-compatible multipart endpoint 不具备客户端流式转写能力。`ORCHESTRATOR_TLS_CA_PATH` 指向只读 PEM CA bundle，用于校验 Orchestrator WSS；Mic 的 ASR HTTPS 信任配置使用部署环境的系统信任库。生产环境必须使用 `wss://` 和 token；`ws://` 只允许在显式设置 `MIC_ALLOW_LOOPBACK_WS=true` 的回环测试中使用。
+部署时根据 `.env.example` 配置 Orchestrator WSS control URL、`TRUSTED_LAN_TOKEN`、`ORCHESTRATOR_TLS_CA_PATH`、Mic ASR endpoint/model、ZipEnhancer 窗口、stream ID、timestamp、trace ID 和 session ID。CAM++、官方 `fbank_config.json`、ZipEnhancer 与 Silero VAD ONNX 已随 Mic 安装包分发并自动加载，无需配置模型路径或 revision；Mic 用 1.5 秒窗口、0.75 秒步进在增强音频上产生临时 voice evidence，不持久化 embedding。ZipEnhancer 使用官方 `noisy_mag` / `noisy_pha` 双输入 ONNX，窗口必须为 20 ms 的整数倍，默认 500 ms；Silero 模型使用 `input`、`state`、`sr` 输入。当前 OpenAI-compatible multipart endpoint 不具备客户端流式转写能力。`ORCHESTRATOR_TLS_CA_PATH` 指向只读 PEM CA bundle，用于校验 Orchestrator WSS；Mic 的 ASR HTTPS 信任配置使用部署环境的系统信任库。生产环境必须使用 `wss://` 和 token；`ws://` 只允许在显式设置 `MIC_ALLOW_LOOPBACK_WS=true` 的回环测试中使用。
 
 以实际运行 `mic-stream` 的服务账号验证 `BITNP_CAPTURE_DEVICE`，并在部署后说话与静音各测试一次。错误的默认设备、输出监视器或持续环境噪声会让 Mic 的端点检测不断产生伪片段，进而打断正在播放的回答。PipeWire/PulseAudio 桌面中，systemd 系统服务需要该账号可访问的音频会话；不要假定登录用户的默认音频设备会自动提供给 `bitnp`。
 

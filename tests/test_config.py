@@ -5,6 +5,13 @@ from pathlib import Path
 import pytest
 
 from mic.config import PEER_WS_URL_KEYS, ConfigError, load_config
+from mic.model_assets import (
+    CAMPP_FBANK_CONFIG_PATH,
+    CAMPP_MODEL_PATH,
+    CAMPP_MODEL_REVISION,
+    VAD_MODEL_PATH,
+    ZIPENHANCER_MODEL_PATH,
+)
 
 
 def test_load_config_targets_orchestrator_when_required_url_present() -> None:
@@ -45,35 +52,38 @@ def test_load_config_uses_configured_ca_bundle_path() -> None:
     assert config.tls_ca_path == Path("/etc/bitnp/internal-ca.pem")
 
 
-def test_load_config_reads_optional_speech_models_and_endpoint_vad() -> None:
+def test_load_config_uses_package_integrated_speech_models() -> None:
     config = load_config(
         {
             "ORCHESTRATOR_WS_URL": "wss://orchestrator.local/ws",
-            "MIC_ZIPENHANCER_MODEL_PATH": "/models/zipenhancer.onnx",
-            "MIC_CAMPP_MODEL_PATH": "/models/campp.onnx",
-            "MIC_CAMPP_MODEL_REVISION": "campplus-v1",
-            "MIC_CAMPP_FBANK_CONFIG_PATH": "/models/campp-fbank-config.json",
-            "MIC_VAD_MODEL_PATH": "/models/silero.onnx",
             "MIC_ASR_ENDPOINT_INCLUDES_VAD": "true",
         }
     )
 
-    assert config.zipenhancer_model_path == Path("/models/zipenhancer.onnx")
-    assert config.campp_model_path == Path("/models/campp.onnx")
-    assert config.campp_fbank_config_path == Path("/models/campp-fbank-config.json")
+    assert config.zipenhancer_model_path == ZIPENHANCER_MODEL_PATH
+    assert config.campp_model_path == CAMPP_MODEL_PATH
+    assert config.campp_model_revision == CAMPP_MODEL_REVISION
+    assert config.campp_fbank_config_path == CAMPP_FBANK_CONFIG_PATH
     assert config.zipenhancer_window_ms == 500
-    assert config.vad_model_path == Path("/models/silero.onnx")
+    assert config.vad_model_path == VAD_MODEL_PATH
     assert config.asr_endpoint_includes_vad is True
 
 
-def test_load_config_rejects_partial_camplusplus_configuration() -> None:
-    with pytest.raises(ConfigError, match="MIC_CAMPP_MODEL_PATH"):
-        load_config(
-            {
-                "ORCHESTRATOR_WS_URL": "wss://orchestrator.local/ws",
-                "MIC_CAMPP_MODEL_PATH": "/models/campp.onnx",
-            }
-        )
+def test_load_config_ignores_legacy_model_path_variables() -> None:
+    config = load_config(
+        {
+            "ORCHESTRATOR_WS_URL": "wss://orchestrator.local/ws",
+            "MIC_CAMPP_MODEL_PATH": "/models/campp.onnx",
+            "MIC_CAMPP_MODEL_REVISION": "legacy",
+            "MIC_CAMPP_FBANK_CONFIG_PATH": "/models/campp-fbank-config.json",
+            "MIC_ZIPENHANCER_MODEL_PATH": "/models/zipenhancer.onnx",
+            "MIC_VAD_MODEL_PATH": "/models/silero.onnx",
+        }
+    )
+
+    assert config.campp_model_path == CAMPP_MODEL_PATH
+    assert config.zipenhancer_model_path == ZIPENHANCER_MODEL_PATH
+    assert config.vad_model_path == VAD_MODEL_PATH
 
 
 def test_load_config_rejects_invalid_endpoint_vad_flag() -> None:

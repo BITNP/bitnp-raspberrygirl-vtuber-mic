@@ -26,6 +26,7 @@ mic-stream = "mic.stream_cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mic"]
+include = ["src/mic/models/*.onnx", "src/mic/models/*.onnx.data", "src/mic/models/*.json"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"

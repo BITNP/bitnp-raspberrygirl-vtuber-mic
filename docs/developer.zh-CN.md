@@ -12,7 +12,7 @@ Python 3.12+、`uv`、`pytest`、`websockets` 和 `sounddevice`；ASR HTTP 调�
 
 ZipEnhancer 使用阿里语音实验室发布的官方 ONNX 导出格式：输入必须是 `noisy_mag`、`noisy_pha`，输出为 `amp_g`、`pha_g`。Mic 按模型指定的 400-point STFT、100-sample hop、幅度压缩系数 0.3，在 CPU 上处理 16 kHz 单声道 PCM16 的连续窗口；不会安装完整 ModelScope 或 Torch 常驻依赖。窗口默认为 500 ms 且必须是 20 ms 的整数倍，避免对每一个 20 ms 块单独推理造成 CPU 开销和边界伪影。单窗口推理失败时 Mic 记录不含音频内容的诊断并原样转发该窗口，保证 VAD 和采集持续工作。
 
-CAM++ ONNX 只接受官方的 float32 `feature` 输入 `[1, frame_num, 80]` 并输出 `embedding`；不得将 PCM 直接送入模型。Mic 用 `MIC_CAMPP_FBANK_CONFIG_PATH` 加载受控的官方 Runtime `fbank_config.json`，严格限定 16 kHz、25 ms 窗、10 ms 帧移、80 mel bins、dither 0、power/log FBank 与逐窗均值归一化。CAM++ worker 与 HTTP ASR worker 并行，容量为 2 的有界 CAM++ 队列防止推理阻塞采集；每条 evidence 在发送完成后即释放，不记录或持久化 embedding。
+CAM++ ONNX 只接受官方的 float32 `feature` 输入 `[1, frame_num, 80]` 并输出 `embedding`；不得将 PCM 直接送入模型。Mic 将受控 CAM++、其同名外部权重 `campp.onnx.data`、官方 Runtime `fbank_config.json`、ZipEnhancer 与 Silero VAD ONNX 作为包资源随安装分发，运行时不读取模型路径环境变量。FBank 严格限定 16 kHz、25 ms 窗、10 ms 帧移、80 mel bins、dither 0、power/log FBank 与逐窗均值归一化。CAM++ worker 与 HTTP ASR worker 并行，容量为 2 的有界 CAM++ 队列防止推理阻塞采集；每条 evidence 在发送完成后即释放，不记录或持久化 embedding。
 
 OpenAI-compatible `/audio/transcriptions` 是一次 multipart 请求，并非流式 ASR 协议。因此采集和本地 VAD 是流式的，而该 ASR 请求在端点形成后执行。若设置 `MIC_ASR_ENDPOINT_INCLUDES_VAD=true`，Mic 仍加载本地 Silero VAD 供 CAM++ 使用，但按 2 秒有界窗口提交 ASR，避免无限累积音频；该模式应仅用于服务端确实支持 VAD/分段的 ASR endpoint。
 

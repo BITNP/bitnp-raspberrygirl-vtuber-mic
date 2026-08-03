@@ -6,6 +6,14 @@ from pathlib import Path
 from typing import Final, NewType
 from urllib.parse import urlparse
 
+from mic.model_assets import (
+    CAMPP_FBANK_CONFIG_PATH,
+    CAMPP_MODEL_PATH,
+    CAMPP_MODEL_REVISION,
+    VAD_MODEL_PATH,
+    ZIPENHANCER_MODEL_PATH,
+)
+
 HealthHost = NewType("HealthHost", str)
 
 HealthPort = NewType("HealthPort", int)
@@ -94,17 +102,17 @@ class ServiceConfig:
 
     asr_api_key: str | None = None
 
-    campp_model_path: Path | None = None
+    campp_model_path: Path = CAMPP_MODEL_PATH
 
-    campp_model_revision: str | None = None
+    campp_model_revision: str = CAMPP_MODEL_REVISION
 
-    campp_fbank_config_path: Path | None = None
+    campp_fbank_config_path: Path = CAMPP_FBANK_CONFIG_PATH
 
-    zipenhancer_model_path: Path | None = None
+    zipenhancer_model_path: Path = ZIPENHANCER_MODEL_PATH
 
     zipenhancer_window_ms: int = DEFAULT_ZIPENHANCER_WINDOW_MS
 
-    vad_model_path: Path | None = None
+    vad_model_path: Path = VAD_MODEL_PATH
 
     asr_endpoint_includes_vad: bool = False
 
@@ -128,34 +136,19 @@ def load_config(env: Mapping[str, str] | None = None) -> ServiceConfig:
         asr_endpoint=_optional_text(source.get(ASR_ENDPOINT_KEY)),
         asr_model=_optional_text(source.get(ASR_MODEL_KEY)),
         asr_api_key=_optional_text(source.get(ASR_API_KEY_KEY)),
-        campp_model_path=_parse_optional_path(source.get(CAMPP_MODEL_PATH_KEY)),
-        campp_model_revision=_optional_text(source.get(CAMPP_MODEL_REVISION_KEY)),
-        campp_fbank_config_path=_parse_optional_path(
-            source.get(CAMPP_FBANK_CONFIG_PATH_KEY)
-        ),
-        zipenhancer_model_path=_parse_optional_path(
-            source.get(ZIPENHANCER_MODEL_PATH_KEY)
-        ),
+        campp_model_path=CAMPP_MODEL_PATH,
+        campp_model_revision=CAMPP_MODEL_REVISION,
+        campp_fbank_config_path=CAMPP_FBANK_CONFIG_PATH,
+        zipenhancer_model_path=ZIPENHANCER_MODEL_PATH,
         zipenhancer_window_ms=_parse_zipenhancer_window_ms(
             source.get(ZIPENHANCER_WINDOW_MS_KEY)
         ),
-        vad_model_path=_parse_optional_path(source.get(VAD_MODEL_PATH_KEY)),
+        vad_model_path=VAD_MODEL_PATH,
         asr_endpoint_includes_vad=_parse_bool(
             source.get(ASR_ENDPOINT_INCLUDES_VAD_KEY),
             ASR_ENDPOINT_INCLUDES_VAD_KEY,
         ),
     )
-    if len(
-        {
-            config.campp_model_path is None,
-            config.campp_model_revision is None,
-            config.campp_fbank_config_path is None,
-        }
-    ) != 1:
-        raise ConfigError(
-            key=CAMPP_MODEL_PATH_KEY,
-            reason="model, revision and FBank config must be configured together",
-        )
     return config
 
 
