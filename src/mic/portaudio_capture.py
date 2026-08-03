@@ -1,5 +1,5 @@
 
-import asyncio  # noqa: ANYIO_OK - PortAudio reads run off the asyncio UDP event loop.
+import asyncio
 import contextlib
 import sys
 from dataclasses import dataclass
@@ -154,6 +154,7 @@ class PortAudioBlockCapture:
 
     __slots__ = (
         "_byteorder",
+        "_close_task",
         "_device",
         "_read_task",
         "_stream",
@@ -177,6 +178,8 @@ class PortAudioBlockCapture:
 
         self._read_task: asyncio.Task[tuple[bytes, bool]] | None = None
 
+        self._close_task: asyncio.Task[None] | None = None
+
     async def open(self) -> None:
 
         self._stream = await asyncio.to_thread(self._open_stream)
@@ -185,7 +188,7 @@ class PortAudioBlockCapture:
 
         stream = self._stream
 
-        if stream is None:
+        if stream is None or self._close_task is not None:
             raise CaptureStateError()
 
         read_task = asyncio.create_task(
@@ -212,20 +215,36 @@ class PortAudioBlockCapture:
 
     async def aclose(self) -> None:
 
-        stream = self._stream
+        close_task = self._close_task
+        if close_task is None:
+            stream = self._stream
+            if stream is None:
+                return
+            # Keep this task independent from the caller: cancellation of
+            # shutdown must not abandon an open PortAudio device while its
+            # worker thread finishes the current read.
+            close_task = asyncio.create_task(self._close_stream(stream))
+            self._close_task = close_task
 
-        if stream is not None:
-            self._stream = None
+        await asyncio.shield(close_task)
 
+    async def _close_stream(self, stream: RawInputStream) -> None:
+        try:
             read_task = self._read_task
             if read_task is not None:
-                # Teardown may run after a second cancellation (for example,
-                # systemd stopping the service). Never close a PortAudio stream
-                # while its worker thread is still inside ``read``.
+                # Never close a PortAudio stream while its worker thread is
+                # still inside ``read``.
                 await _drain_read_task(read_task)
-                self._read_task = None
+                if self._read_task is read_task:
+                    self._read_task = None
 
             await asyncio.to_thread(stream.__exit__, None, None, None)
+        except BaseException:
+            self._close_task = None
+            raise
+        else:
+            self._stream = None
+            self._close_task = None
 
     def _open_stream(self) -> RawInputStream:
 

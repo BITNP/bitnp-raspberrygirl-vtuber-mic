@@ -175,6 +175,11 @@ def test_block_capture_waits_for_worker_read_before_close_after_second_cancel() 
     asyncio.run(_close_waits_for_cancelled_worker_read())
 
 
+def test_block_capture_closes_stream_when_close_is_cancelled() -> None:
+
+    asyncio.run(_close_still_releases_stream_after_cancellation())
+
+
 async def _close_waits_for_cancelled_worker_read() -> None:
 
     entered_read = threading.Event()
@@ -246,3 +251,53 @@ async def _close_waits_for_cancelled_worker_read() -> None:
     await close_task
 
     assert calls == ["open", "close"]
+
+
+async def _close_still_releases_stream_after_cancellation() -> None:
+
+    entered_read = threading.Event()
+    release_read = threading.Event()
+    exited_stream = threading.Event()
+
+    class Stream:
+
+        def __enter__(self) -> Self:
+
+            return self
+
+        def __exit__(
+            self,
+            exception_type: type[BaseException] | None,
+            exception: BaseException | None,
+            traceback: TracebackType | None,
+        ) -> None:
+
+            _ = exception_type, exception, traceback
+            exited_stream.set()
+
+        def read(self, frames: int) -> tuple[bytes, bool]:
+
+            assert frames == 320
+            entered_read.set()
+            assert release_read.wait(timeout=1)
+            return b"\x00\x00" * 320, False
+
+    stream = Stream()
+    capture = PortAudioBlockCapture(
+        device=None, stream_factory=lambda device: stream
+    )
+    await capture.open()
+
+    read_task = asyncio.create_task(capture.read_block())
+    assert await asyncio.to_thread(entered_read.wait, 1)
+
+    close_task = asyncio.create_task(capture.aclose())
+    await asyncio.sleep(0)
+    close_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await close_task
+
+    release_read.set()
+    assert await asyncio.to_thread(exited_stream.wait, 1)
+    await capture.aclose()
+    assert read_task.done()
