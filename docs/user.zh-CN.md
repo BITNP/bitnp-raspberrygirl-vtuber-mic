@@ -24,4 +24,4 @@ ORCHESTRATOR_WS_URL=wss://orchestrator.example.test/control uv run mic-health
 
 以实际运行 `mic-stream` 的服务账号验证 `BITNP_CAPTURE_DEVICE`，并在部署后说话与静音各测试一次。错误的默认设备、输出监视器或持续环境噪声会让 Mic 的端点检测不断产生伪片段，进而打断正在播放的回答。PipeWire/PulseAudio 桌面中，systemd 系统服务需要该账号可访问的音频会话；不要假定登录用户的默认音频设备会自动提供给 `bitnp`。
 
-现场讲解链路中，Mic 的 `BITNP_SESSION_ID` 与 `BITNP_MIC_RTP_STREAM_ID` 必须匹配 Orchestrator 已注册的 Mic 输入。Mic 不与 Sound 直连。启动顺序是 Orchestrator、Sound、Mic。
+现场讲解链路中，Mic 的 `BITNP_SESSION_ID` 与 `BITNP_MIC_STREAM_ID` 必须匹配 Orchestrator 已注册的 Mic 输入。Mic 不与 Sound 直连，也不建立 RTP 路由。启动顺序是 Orchestrator、Sound、Mic。

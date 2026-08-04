@@ -2,15 +2,13 @@ import asyncio
 
 from mic.config import OrchestratorWsUrl, ServiceConfig
 from mic.stream_cli import run_stream
-from mic.streaming import RtpEndpoint, RtpPort, StreamingRuntimeConfig
+from mic.streaming import StreamingRuntimeConfig
 
 
 def test_run_stream_is_control_only_and_never_constructs_udp(monkeypatch) -> None:
     config = StreamingRuntimeConfig(
         stream_id="mic-primary",
         start_timestamp=96_000,
-        rtp_endpoint=RtpEndpoint("", RtpPort(0)),
-        udp_bind_endpoint=RtpEndpoint("", RtpPort(0)),
         max_blocks=1,
         service_config=ServiceConfig(
             OrchestratorWsUrl("wss://orchestrator.example.test/control"),
@@ -79,8 +77,6 @@ def test_run_stream_stops_capture_when_control_connection_closes(monkeypatch) ->
     config = StreamingRuntimeConfig(
         stream_id="mic-primary",
         start_timestamp=96_000,
-        rtp_endpoint=RtpEndpoint("", RtpPort(0)),
-        udp_bind_endpoint=RtpEndpoint("", RtpPort(0)),
         max_blocks=None,
         service_config=ServiceConfig(
             OrchestratorWsUrl("wss://orchestrator.example.test/control"),
