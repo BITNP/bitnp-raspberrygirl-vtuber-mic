@@ -55,6 +55,12 @@ VAD_MODEL_PATH_KEY: Final = "MIC_VAD_MODEL_PATH"
 
 ASR_ENDPOINT_INCLUDES_VAD_KEY: Final = "MIC_ASR_ENDPOINT_INCLUDES_VAD"
 
+ENABLE_ZIPENHANCER_KEY: Final = "MIC_ENABLE_ZIPENHANCER"
+
+ENABLE_SILERO_VAD_KEY: Final = "MIC_ENABLE_SILERO_VAD"
+
+ENABLE_CAMPP_KEY: Final = "MIC_ENABLE_CAMPP"
+
 PEER_WS_URL_KEYS: Final = (
     "MIC_WS_URL",
     "ASR_WS_URL",
@@ -116,6 +122,12 @@ class ServiceConfig:
 
     asr_endpoint_includes_vad: bool = False
 
+    enable_zipenhancer: bool = True
+
+    enable_silero_vad: bool = True
+
+    enable_campp: bool = True
+
 
 def load_config(env: Mapping[str, str] | None = None) -> ServiceConfig:
 
@@ -147,6 +159,15 @@ def load_config(env: Mapping[str, str] | None = None) -> ServiceConfig:
         asr_endpoint_includes_vad=_parse_bool(
             source.get(ASR_ENDPOINT_INCLUDES_VAD_KEY),
             ASR_ENDPOINT_INCLUDES_VAD_KEY,
+        ),
+        enable_zipenhancer=_parse_bool(
+            source.get(ENABLE_ZIPENHANCER_KEY), ENABLE_ZIPENHANCER_KEY, default=True
+        ),
+        enable_silero_vad=_parse_bool(
+            source.get(ENABLE_SILERO_VAD_KEY), ENABLE_SILERO_VAD_KEY, default=True
+        ),
+        enable_campp=_parse_bool(
+            source.get(ENABLE_CAMPP_KEY), ENABLE_CAMPP_KEY, default=True
         ),
     )
     return config
@@ -230,9 +251,9 @@ def _optional_text(value: str | None) -> str | None:
     return value.strip()
 
 
-def _parse_bool(value: str | None, key: str) -> bool:
+def _parse_bool(value: str | None, key: str, *, default: bool = False) -> bool:
     if value is None or value.strip() == "":
-        return False
+        return default
     if value.strip().lower() == "true":
         return True
     if value.strip().lower() == "false":

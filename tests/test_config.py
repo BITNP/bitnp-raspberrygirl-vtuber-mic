@@ -13,6 +13,8 @@ from mic.model_assets import (
     ZIPENHANCER_MODEL_PATH,
 )
 
+ROOT = Path(__file__).resolve().parents[1]
+
 
 def test_load_config_targets_orchestrator_when_required_url_present() -> None:
 
@@ -67,6 +69,39 @@ def test_load_config_uses_package_integrated_speech_models() -> None:
     assert config.zipenhancer_window_ms == 500
     assert config.vad_model_path == VAD_MODEL_PATH
     assert config.asr_endpoint_includes_vad is True
+    assert config.enable_zipenhancer is True
+    assert config.enable_silero_vad is True
+    assert config.enable_campp is True
+
+
+def test_load_config_can_disable_each_optional_speech_model() -> None:
+    config = load_config(
+        {
+            "ORCHESTRATOR_WS_URL": "wss://orchestrator.local/ws",
+            "MIC_ENABLE_ZIPENHANCER": "false",
+            "MIC_ENABLE_SILERO_VAD": "false",
+            "MIC_ENABLE_CAMPP": "false",
+        }
+    )
+
+    assert config.enable_zipenhancer is False
+    assert config.enable_silero_vad is False
+    assert config.enable_campp is False
+
+
+def test_shipped_environment_example_uses_parseable_canonical_mic_keys() -> None:
+    values = {
+        key: value
+        for raw_line in (ROOT / ".env.example").read_text(encoding="utf-8").splitlines()
+        if (line := raw_line.strip()) and not line.startswith("#")
+        for key, value in (line.split("=", 1),)
+    }
+
+    config = load_config(values)
+
+    assert config.orchestrator_ws_url == "wss://orchestrator.example.test/control"
+    assert values["BITNP_MIC_STREAM_ID"] == "onsite-primary"
+    assert "BITNP_MIC_RTP_STREAM_ID" not in values
 
 
 def test_load_config_ignores_legacy_model_path_variables() -> None:

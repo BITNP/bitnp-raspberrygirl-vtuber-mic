@@ -36,10 +36,14 @@ async def run_stream() -> int:
 
     if service_config.asr_endpoint is None or service_config.asr_model is None:
         raise ConfigError(key="MIC_ASR_ENDPOINT", reason="endpoint and model required")
-    camplusplus = CamPlusPlusOnnx(
-        service_config.campp_model_path,
-        service_config.campp_model_revision,
-        service_config.campp_fbank_config_path,
+    camplusplus = (
+        CamPlusPlusOnnx(
+            service_config.campp_model_path,
+            service_config.campp_model_revision,
+            service_config.campp_fbank_config_path,
+        )
+        if service_config.enable_campp
+        else None
     )
     processor = MicAsrEndpointProcessor(
         control,
@@ -49,16 +53,24 @@ async def run_stream() -> int:
             service_config.asr_model,
             service_config.asr_api_key,
         ),
-        vad=SileroVadOnnx.load(service_config.vad_model_path),
+        vad=(
+            SileroVadOnnx.load(service_config.vad_model_path)
+            if service_config.enable_silero_vad
+            else None
+        ),
         asr_endpoint_includes_vad=service_config.asr_endpoint_includes_vad,
     )
     capture = PortAudioBlockCapture(device=config.device)
     await control.register_input(config.stream_id)
     await capture.open()
     try:
-        enhancer = ZipEnhancerStreamingProcessor(
-            ZipEnhancerOnnx(service_config.zipenhancer_model_path),
-            window_ms=service_config.zipenhancer_window_ms,
+        enhancer = (
+            ZipEnhancerStreamingProcessor(
+                ZipEnhancerOnnx(service_config.zipenhancer_model_path),
+                window_ms=service_config.zipenhancer_window_ms,
+            )
+            if service_config.enable_zipenhancer
+            else None
         )
         pipeline_task = asyncio.create_task(
             run_continuous_pipeline(
@@ -66,7 +78,11 @@ async def run_stream() -> int:
                 processor,
                 start_timestamp=config.start_timestamp,
                 enhancer=enhancer,
-                campp_streamer=CamPlusPlusStreamingProcessor(),
+                campp_streamer=(
+                    CamPlusPlusStreamingProcessor()
+                    if service_config.enable_campp
+                    else None
+                ),
                 campp_model=camplusplus,
             )
         )
