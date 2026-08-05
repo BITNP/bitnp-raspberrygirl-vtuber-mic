@@ -22,6 +22,10 @@ ASR_PARTIAL_EVENT: Final = "asr.partial"
 ASR_FINAL_EVENT: Final = "asr.final"
 
 MAX_EMBEDDING_DIMENSIONS: Final = 1_024
+MAX_RTP_TIMESTAMP: Final = (1 << 32) - 1
+MAX_ASR_SPAN_SAMPLES: Final = 16_000 * 30
+MAX_EVIDENCE_SPAN_SAMPLES: Final = 16_000 * 2
+MAX_CONTROL_FRAME_BYTES: Final = 64 * 1024
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -35,6 +39,7 @@ class ControlContext:
 @dataclass(frozen=True, slots=True)
 class VoiceEvidence:
     stream_id: str
+    input_epoch: int
     rtp_start_timestamp: int
     rtp_end_timestamp: int
     embedding_model_revision: str
@@ -45,8 +50,12 @@ class VoiceEvidence:
     def __post_init__(self) -> None:
         if (
             not self.stream_id
-            or self.rtp_start_timestamp < 0
-            or self.rtp_end_timestamp < self.rtp_start_timestamp
+            or self.input_epoch < 0
+            or not _valid_rtp_span(
+                self.rtp_start_timestamp,
+                self.rtp_end_timestamp,
+                MAX_EVIDENCE_SPAN_SAMPLES,
+            )
             or not self.embedding_model_revision
             or not 1 <= len(self.embedding) <= MAX_EMBEDDING_DIMENSIONS
             or self.speech_ms <= 0
@@ -72,8 +81,11 @@ class AsrResult:
         if (
             not self.stream_id
             or not self.segment_id
-            or self.rtp_start_timestamp < 0
-            or self.rtp_end_timestamp < self.rtp_start_timestamp
+            or not _valid_rtp_span(
+                self.rtp_start_timestamp,
+                self.rtp_end_timestamp,
+                MAX_ASR_SPAN_SAMPLES,
+            )
             or self.cancellation_epoch < 0
             or self.received_at_ms < 0
             or not self.text.strip()
@@ -115,13 +127,14 @@ class WebsocketsControlConnector:
 
 
 class WebSocketStreamingControl:
-    __slots__ = ("_connection", "_context")
+    __slots__ = ("_connection", "_context", "_input_epoch")
 
     def __init__(self, connection: ControlConnection, context: ControlContext) -> None:
 
         self._connection = connection
 
         self._context = context
+        self._input_epoch: int | None = None
 
     @classmethod
     async def open(
@@ -152,7 +165,7 @@ class WebSocketStreamingControl:
 
         return cls(connection, context)
 
-    async def register_input(self, stream_id: str) -> None:
+    async def register_input(self, stream_id: str) -> int:
         """Register the control-only Mic input; no audio endpoint is exposed."""
         if not stream_id:
             raise ConfigError(key="mic.input.register", reason="stream_id is required")
@@ -168,6 +181,28 @@ class WebSocketStreamingControl:
             "data": {"stream_id": stream_id},
         }
         await self._connection.send(json.dumps(event, separators=(",", ":")))
+        message = await self._connection.recv()
+        if not isinstance(message, str) or len(message.encode("utf-8")) > MAX_CONTROL_FRAME_BYTES:
+            raise ConfigError(key="mic.input.ready", reason="invalid control frame")
+        try:
+            ready = json.loads(message)
+        except json.JSONDecodeError as error:
+            raise ConfigError(key="mic.input.ready", reason="invalid JSON") from error
+        data = ready.get("data") if isinstance(ready, dict) else None
+        epoch = data.get("input_epoch") if isinstance(data, dict) else None
+        if (
+            not isinstance(ready, dict)
+            or ready.get("event_type") != "mic.input.ready"
+            or ready.get("source") != "orchestrator"
+            or ready.get("session_id") != self._context.session_id
+            or not isinstance(data, dict)
+            or data.get("stream_id") != stream_id
+            or type(epoch) is not int
+            or epoch < 0
+        ):
+            raise ConfigError(key="mic.input.ready", reason="invalid readiness lease")
+        self._input_epoch = epoch
+        return epoch
 
     async def wait_closed(self) -> None:
         """Wait for the control peer to close without interpreting inbound effects."""
@@ -193,6 +228,7 @@ class WebSocketStreamingControl:
             "seq": sequence,
             "data": {
                 "stream_id": evidence.stream_id,
+                "input_epoch": evidence.input_epoch,
                 "rtp_start_timestamp": evidence.rtp_start_timestamp,
                 "rtp_end_timestamp": evidence.rtp_end_timestamp,
                 "embedding_model_revision": evidence.embedding_model_revision,
@@ -253,3 +289,11 @@ def _authorization_header(config: ServiceConfig) -> dict[str, str]:
         return {}
 
     return {"Authorization": f"Bearer {token}"}
+
+
+def _valid_rtp_span(start: int, end: int, maximum: int) -> bool:
+    return (
+        0 <= start <= MAX_RTP_TIMESTAMP
+        and 0 <= end <= MAX_RTP_TIMESTAMP
+        and 0 < ((end - start) & MAX_RTP_TIMESTAMP) <= maximum
+    )

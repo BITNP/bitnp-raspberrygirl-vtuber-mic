@@ -54,8 +54,9 @@ class FakeControl:
     registered_streams: list[str] = field(default_factory=list)
     closed: bool = False
 
-    async def register_input(self, stream_id: str) -> None:
+    async def register_input(self, stream_id: str) -> int:
         self.registered_streams.append(stream_id)
+        return 1
 
     async def aclose(self) -> None:
         self.closed = True

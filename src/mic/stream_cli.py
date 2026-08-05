@@ -45,6 +45,7 @@ async def run_stream() -> int:
         if service_config.enable_campp
         else None
     )
+    input_epoch = await control.register_input(config.stream_id)
     processor = MicAsrEndpointProcessor(
         control,
         stream_id=config.stream_id,
@@ -59,9 +60,9 @@ async def run_stream() -> int:
             else None
         ),
         asr_endpoint_includes_vad=service_config.asr_endpoint_includes_vad,
+        cancellation_epoch=input_epoch,
     )
     capture = PortAudioBlockCapture(device=config.device)
-    await control.register_input(config.stream_id)
     await capture.open()
     try:
         enhancer = (

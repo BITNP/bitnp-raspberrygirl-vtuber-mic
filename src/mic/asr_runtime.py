@@ -134,6 +134,7 @@ class MicAsrEndpointProcessor:
             await self._control.send_voice_evidence(
                 VoiceEvidence(
                     stream_id=self._stream_id,
+                    input_epoch=self._epoch,
                     rtp_start_timestamp=window.rtp_start_timestamp,
                     rtp_end_timestamp=window.rtp_end_timestamp,
                     embedding_model_revision=revision,

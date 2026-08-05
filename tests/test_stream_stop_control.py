@@ -55,7 +55,18 @@ def ca_path(tmp_path: Path) -> Path:
 
 
 def test_websocket_control_only_sends_mic_input_and_asr_events() -> None:
-    connection = _Connection(messages=[])
+    connection = _Connection(
+        messages=[
+            json.dumps(
+                {
+                    "event_type": "mic.input.ready",
+                    "source": "orchestrator",
+                    "session_id": "s-1",
+                    "data": {"stream_id": "mic-1", "input_epoch": 7},
+                }
+            )
+        ]
+    )
     control = WebSocketStreamingControl(connection, ControlContext("trace-1", "s-1"))
     result = AsrResult("mic-1", "segment-1", 1, 321, 0, "你好", 10, 0.9)
 
@@ -64,7 +75,9 @@ def test_websocket_control_only_sends_mic_input_and_asr_events() -> None:
         await control.send_asr_partial(result, sequence=1)
         await control.send_asr_final(result, sequence=2)
         await control.send_voice_evidence(
-            VoiceEvidence("mic-1", 1, 321, "camplusplus-onnx-v1", (0.25, -0.5), 20, 0.9),
+            VoiceEvidence(
+                "mic-1", 7, 1, 321, "camplusplus-onnx-v1", (0.25, -0.5), 20, 0.9
+            ),
             sequence=3,
         )
 
@@ -74,6 +87,7 @@ def test_websocket_control_only_sends_mic_input_and_asr_events() -> None:
         "mic.input.register", "asr.partial", "asr.final", "voice.evidence"
     ]
     assert events[0]["data"] == {"stream_id": "mic-1"}
+    assert events[3]["data"]["input_epoch"] == 7
     assert all("rtp_endpoint" not in event["data"] for event in events)
 
 

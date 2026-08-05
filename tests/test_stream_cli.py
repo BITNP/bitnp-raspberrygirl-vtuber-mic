@@ -19,8 +19,9 @@ def test_run_stream_is_control_only_and_never_constructs_udp(monkeypatch) -> Non
     calls: list[object] = []
 
     class Control:
-        async def register_input(self, stream_id: str) -> None:
+        async def register_input(self, stream_id: str) -> int:
             calls.append(("register", stream_id))
+            return 1
 
         async def wait_closed(self) -> None:
             await asyncio.Future[None]()
@@ -88,8 +89,9 @@ def test_run_stream_stops_capture_when_control_connection_closes(monkeypatch) ->
     capture_started = asyncio.Event()
 
     class Control:
-        async def register_input(self, stream_id: str) -> None:
+        async def register_input(self, stream_id: str) -> int:
             calls.append(("register", stream_id))
+            return 1
 
         async def wait_closed(self) -> None:
             await capture_started.wait()
