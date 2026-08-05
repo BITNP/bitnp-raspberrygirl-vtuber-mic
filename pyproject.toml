@@ -19,6 +19,7 @@ build-backend = "hatchling.build"
 dev = [
     "basedpyright>=1.31,<2",
     "pytest>=8",
+    "ruff>=0.12",
 ]
 
 [project.scripts]
@@ -40,6 +41,19 @@ markers = [
 ]
 
 [tool.pyright]
-typeCheckingMode = "standard"
+typeCheckingMode = "strict"
+include = ["src"]
 venvPath = "."
 venv = ".venv"
+stubPath = "typings"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = []

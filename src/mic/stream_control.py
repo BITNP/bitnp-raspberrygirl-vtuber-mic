@@ -3,7 +3,7 @@ import logging
 import ssl
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Final, Protocol
+from typing import Final, Protocol, cast
 from urllib.parse import urlparse
 from uuid import uuid4
 
@@ -186,17 +186,24 @@ class WebSocketStreamingControl:
         if not isinstance(message, str) or len(message.encode("utf-8")) > MAX_CONTROL_FRAME_BYTES:
             raise ConfigError(key="mic.input.ready", reason="invalid control frame")
         try:
-            ready = json.loads(message)
+            decoded = json.loads(message)
         except json.JSONDecodeError as error:
             raise ConfigError(key="mic.input.ready", reason="invalid JSON") from error
-        data = ready.get("data") if isinstance(ready, dict) else None
-        epoch = data.get("input_epoch") if isinstance(data, dict) else None
+        ready = cast("object", decoded)
+        parsed = cast("dict[str, object]", ready) if isinstance(ready, dict) else None
+        data_value = parsed.get("data") if parsed is not None else None
+        data = (
+            cast("dict[str, object]", data_value)
+            if isinstance(data_value, dict)
+            else None
+        )
+        epoch = data.get("input_epoch") if data is not None else None
         if (
-            not isinstance(ready, dict)
-            or ready.get("event_type") != "mic.input.ready"
-            or ready.get("source") != "orchestrator"
-            or ready.get("session_id") != self._context.session_id
-            or not isinstance(data, dict)
+            parsed is None
+            or parsed.get("event_type") != "mic.input.ready"
+            or parsed.get("source") != "orchestrator"
+            or parsed.get("session_id") != self._context.session_id
+            or data is None
             or data.get("stream_id") != stream_id
             or type(epoch) is not int
             or epoch < 0

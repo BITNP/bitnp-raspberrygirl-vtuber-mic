@@ -30,7 +30,7 @@ Mic 引用 Orchestrator 的 `schemas/protocol/envelope.schema.json` 和 `schemas
 ## 模块契约
 
 - 必须只连接 Orchestrator。
-- 必须先完成 input register/ready handshake，再发送结构化输入事件。
+- 启动时先验证配置并加载所有已启用模型，再打开 control；必须完成 input register/ready handshake 后才打开 PortAudio 并发送结构化输入事件。异常断线会清理 capture、HTTP、WSS 和 worker 后按有抖动的上限 10 秒退避重连。
 - 必须保持 20 ms、640-byte PCM16 采集块与连续的时间戳边界。
 - 不得向 Orchestrator 发送原始 ASR 音频；只发送有界的结构化结果。不得从 partial 触发业务效果。
 - 生产 WSS 必须携带可信局域网 bearer token。

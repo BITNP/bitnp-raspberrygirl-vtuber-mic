@@ -91,9 +91,13 @@ class OpenAICompatibleAsr:
             value = cast("object", json.loads(body))
         except (json.JSONDecodeError, UnicodeError, ValueError):
             return Recognition("")
-        if not isinstance(value, dict) or not isinstance(value.get("text"), str):
+        if not isinstance(value, dict):
             return Recognition("")
-        confidence = value.get("confidence")
+        parsed = cast("dict[str, object]", value)
+        text = parsed.get("text")
+        if not isinstance(text, str):
+            return Recognition("")
+        confidence = parsed.get("confidence")
         if confidence is not None and (
             isinstance(confidence, bool)
             or not isinstance(confidence, int | float)
@@ -102,7 +106,7 @@ class OpenAICompatibleAsr:
         ):
             return Recognition("")
         return Recognition(
-            value["text"].strip(),
+            text.strip(),
             None if confidence is None else float(confidence),
         )
 
