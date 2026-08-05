@@ -105,6 +105,9 @@ class ZipEnhancerStreamingProcessor:
             return ()
         return self._process_window()
 
+    def reset(self) -> None:
+        self._frames.clear()
+
     def _process_window(self) -> tuple[bytes, ...]:
         frames = tuple(self._frames)
         self._frames.clear()
@@ -211,3 +214,9 @@ class SileroVadOnnx:
         self._state = numpy.asarray(state)
         self._context = model_input[:, -SILERO_VAD_CONTEXT_SAMPLES:]
         return float(numpy.asarray(output).reshape(-1)[0])
+
+    def reset(self) -> None:
+        self._state = numpy.zeros((2, 1, 128), dtype=numpy.float32)
+        self._context = numpy.zeros(
+            (1, SILERO_VAD_CONTEXT_SAMPLES), dtype=numpy.float32
+        )

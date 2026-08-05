@@ -9,6 +9,7 @@ from mic.camplusplus import (
     CamPlusPlusWindow,
 )
 from mic.continuous_pipeline import run_continuous_pipeline
+from mic.portaudio_capture import CaptureOverflowError
 from mic.speech_models import ZipEnhancerStreamingProcessor
 
 
@@ -68,6 +69,39 @@ def test_pipeline_preserves_enhanced_frame_order_timestamps_and_tail() -> None:
         (bytes([0xFC]) * 640, 1_600),
     ]
     assert len(processor.recognized) == 1
+
+
+def test_capture_overflow_advances_time_and_resets_streaming_state() -> None:
+    class OverflowCapture:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def read_block(self) -> bytes | None:
+            self.calls += 1
+            if self.calls == 1:
+                raise CaptureOverflowError
+            if self.calls == 2:
+                return b"\x00" * 640
+            return None
+
+    class Processor(_Processor):
+        def __init__(self) -> None:
+            super().__init__()
+            self.resets = 0
+
+        def reset_discontinuity(self) -> None:
+            self.resets += 1
+
+    processor = Processor()
+
+    asyncio.run(
+        run_continuous_pipeline(
+            OverflowCapture(), processor, start_timestamp=0xFFFF_FF00
+        )
+    )
+
+    assert processor.resets == 1
+    assert processor.received == [(b"\x00" * 640, 0x40)]
 
 
 def test_camplusplus_worker_emits_evidence_while_asr_is_blocked() -> None:

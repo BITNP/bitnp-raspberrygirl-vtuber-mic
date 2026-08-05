@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass
 from time import perf_counter
 from typing import Final, Protocol, cast
 
@@ -16,6 +17,7 @@ from mic.camplusplus import (
     CamPlusPlusStreamingProcessor,
     CamPlusPlusWindow,
 )
+from mic.portaudio_capture import CaptureOverflowError
 from mic.speech_models import ZipEnhancerStreamingProcessor
 
 RAW_QUEUE_MAX_FRAMES: Final = 75
@@ -43,7 +45,6 @@ class EndpointProcessor(Protocol):
         self, window: CamPlusPlusWindow, embedding: CamPlusPlusEmbedding, revision: str
     ) -> None: ...
 
-
 class CamppModel(Protocol):
     revision: str
 
@@ -51,6 +52,11 @@ class CamppModel(Protocol):
 
 
 type TimestampedFrame = tuple[bytes, int]
+
+
+@dataclass(frozen=True, slots=True)
+class _CaptureDiscontinuity:
+    rtp_timestamp: int
 
 
 async def run_continuous_pipeline(
@@ -63,9 +69,9 @@ async def run_continuous_pipeline(
     campp_model: CamppModel | None = None,
 ) -> None:
     """Keep capture active while serial workers enhance, endpoint and recognize audio."""
-    raw_frames: asyncio.Queue[TimestampedFrame | None] = asyncio.Queue(
-        maxsize=RAW_QUEUE_MAX_FRAMES
-    )
+    raw_frames: asyncio.Queue[
+        TimestampedFrame | _CaptureDiscontinuity | None
+    ] = asyncio.Queue(maxsize=RAW_QUEUE_MAX_FRAMES)
     endpoints: asyncio.Queue[AsrEndpoint | None] = asyncio.Queue(
         maxsize=ENDPOINT_QUEUE_MAX_SEGMENTS
     )
@@ -75,7 +81,19 @@ async def run_continuous_pipeline(
 
     async def capture_frames() -> None:
         timestamp = start_timestamp
-        while (frame := await capture.read_block()) is not None:
+        while True:
+            try:
+                frame = await capture.read_block()
+            except CaptureOverflowError:
+                LOGGER.debug(
+                    "mic_capture_discontinuity rtp_timestamp=%d outcome=reset",
+                    timestamp,
+                )
+                await raw_frames.put(_CaptureDiscontinuity(timestamp))
+                timestamp = (timestamp + 320) % (1 << 32)
+                continue
+            if frame is None:
+                break
             await raw_frames.put((frame, timestamp))
             timestamp = (timestamp + 320) % (1 << 32)
         await raw_frames.put(None)
@@ -83,6 +101,16 @@ async def run_continuous_pipeline(
     async def enhance_and_endpoint() -> None:
         last_timestamp: int | None = None
         while (item := await raw_frames.get()) is not None:
+            if isinstance(item, _CaptureDiscontinuity):
+                reset = getattr(endpoint_processor, "reset_discontinuity", None)
+                if callable(reset):
+                    cast(Callable[[], None], reset)()
+                if enhancer is not None:
+                    enhancer.reset()
+                if campp_streamer is not None:
+                    campp_streamer.reset()
+                last_timestamp = None
+                continue
             frame, timestamp = item
             last_timestamp = timestamp
             enhanced_frames = (

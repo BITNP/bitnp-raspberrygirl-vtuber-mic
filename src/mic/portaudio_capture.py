@@ -196,7 +196,7 @@ class PortAudioBlockCapture:
         )
         self._read_task = read_task
         try:
-            payload, _overflowed = await asyncio.shield(read_task)
+            payload, overflowed = await asyncio.shield(read_task)
         except asyncio.CancelledError:
             # A thread cannot be cancelled. Let the bounded 20 ms PortAudio read
             # return before the caller closes the stream during cleanup.
@@ -205,6 +205,9 @@ class PortAudioBlockCapture:
         finally:
             if read_task.done():
                 self._read_task = None
+
+        if overflowed:
+            raise CaptureOverflowError
 
         canonical_payload = _normalize_pcm16le(payload, self._byteorder)
 
@@ -276,3 +279,7 @@ async def _drain_read_task(read_task: asyncio.Task[tuple[bytes, bool]]) -> None:
         with contextlib.suppress(Exception):
             await asyncio.shield(read_task)
         raise
+
+
+class CaptureOverflowError(RuntimeError):
+    """PortAudio dropped input; callers must advance time and reset processors."""

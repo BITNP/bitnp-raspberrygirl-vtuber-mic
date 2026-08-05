@@ -76,6 +76,13 @@ class MicAsrEndpointProcessor:
         """Finish the current enhanced VAD segment without stopping capture."""
         return self._detector.flush()
 
+    def reset_discontinuity(self) -> None:
+        self._detector.reset()
+        self._vad_buffer = b""
+        self._last_vad_speech = False
+        if self._vad is not None:
+            self._vad.reset()
+
     def _speech(self, frame: bytes) -> bool | None:
         vad = self._vad
         if vad is None:

@@ -127,7 +127,7 @@ class WebsocketsControlConnector:
 
 
 class WebSocketStreamingControl:
-    __slots__ = ("_connection", "_context", "_input_epoch")
+    __slots__ = ("_abnormal_close", "_connection", "_context", "_input_epoch")
 
     def __init__(self, connection: ControlConnection, context: ControlContext) -> None:
 
@@ -135,6 +135,7 @@ class WebSocketStreamingControl:
 
         self._context = context
         self._input_epoch: int | None = None
+        self._abnormal_close = False
 
     @classmethod
     async def open(
@@ -209,8 +210,13 @@ class WebSocketStreamingControl:
         try:
             while True:
                 _ = await self._connection.recv()
-        except ConnectionClosed:
+        except ConnectionClosed as error:
+            self._abnormal_close = getattr(error, "code", 1006) not in {1000, 1001}
             _LOGGER.debug("mic_control_peer_closed session=%s", self._context.session_id)
+
+    @property
+    def should_reconnect(self) -> bool:
+        return self._abnormal_close
 
     async def send_voice_evidence(
         self, evidence: VoiceEvidence, *, sequence: int

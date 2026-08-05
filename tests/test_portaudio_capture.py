@@ -9,10 +9,27 @@ import pytest
 
 from mic.portaudio_capture import (
     CaptureDevice,
+    CaptureOverflowError,
     PortAudioBlockCapture,
     PortAudioCaptureSource,
     RawInputStream,
 )
+
+
+def test_block_capture_surfaces_portaudio_overflow() -> None:
+    stream = FakeRawInputStream(data=b"\x00" * 640, overflowed=True)
+    capture = PortAudioBlockCapture(
+        device="Microphone",
+        stream_factory=FakeRawInputStreamFactory(stream),
+    )
+
+    async def scenario() -> None:
+        await capture.open()
+        with pytest.raises(CaptureOverflowError):
+            _ = await capture.read_block()
+        await capture.aclose()
+
+    asyncio.run(scenario())
 
 
 @dataclass(slots=True)

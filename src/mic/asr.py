@@ -159,6 +159,12 @@ class EnergyEndpointDetector:
         self._silence = 0
         return result
 
+    def reset(self) -> None:
+        self._frames.clear()
+        self._start = None
+        self._last_end = 0
+        self._silence = 0
+
 
 def _energy(frame: bytes) -> int:
     samples = memoryview(frame).cast("h")
