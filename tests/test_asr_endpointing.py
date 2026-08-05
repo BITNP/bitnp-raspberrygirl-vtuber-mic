@@ -2,6 +2,8 @@ import asyncio
 import logging
 from typing import cast
 
+import httpx
+
 from mic.asr import (
     FRAME_BYTES,
     AsrEndpoint,
@@ -31,6 +33,51 @@ def test_openai_compatible_asr_appends_transcription_path_to_base_url() -> None:
     asr = OpenAICompatibleAsr("https://asr.example.test/v1/", "asr")
 
     assert asr._endpoint == "https://asr.example.test/v1/audio/transcriptions"
+
+
+def test_openai_compatible_asr_streams_bounded_response_and_validates_confidence() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["authorization"] == "Bearer secret"
+        assert b'name="model"' in await request.aread()
+        return httpx.Response(
+            200,
+            json={"text": "  识别成功  ", "confidence": 0.92},
+        )
+
+    async def run() -> Recognition:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler)
+        ) as client:
+            asr = OpenAICompatibleAsr(
+                "https://asr.example.test/v1", "asr", "secret", client=client
+            )
+            return await asr.transcribe(AsrEndpoint(b"\0" * FRAME_BYTES, 0, 320))
+
+    assert asyncio.run(run()) == Recognition("识别成功", 0.92)
+
+
+def test_openai_compatible_asr_discards_oversize_and_bad_confidence() -> None:
+    responses = iter(
+        (
+            httpx.Response(200, content=b"{" + b"x" * 65_536),
+            httpx.Response(200, json={"text": "bad", "confidence": 1.1}),
+        )
+    )
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return next(responses)
+
+    async def run() -> tuple[Recognition, Recognition]:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler)
+        ) as client:
+            asr = OpenAICompatibleAsr(
+                "https://asr.example.test/v1", "asr", client=client
+            )
+            endpoint = AsrEndpoint(b"\0" * FRAME_BYTES, 0, 320)
+            return await asr.transcribe(endpoint), await asr.transcribe(endpoint)
+
+    assert asyncio.run(run()) == (Recognition(""), Recognition(""))
 
 
 def test_asr_processor_logs_complete_transcript(caplog) -> None:

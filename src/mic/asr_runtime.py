@@ -69,6 +69,9 @@ class MicAsrEndpointProcessor:
         if endpoint is not None:
             await self.recognize_endpoint(endpoint)
 
+    async def aclose(self) -> None:
+        await self._asr.aclose()
+
     def flush_enhanced_frames(self) -> AsrEndpoint | None:
         """Finish the current enhanced VAD segment without stopping capture."""
         return self._detector.flush()

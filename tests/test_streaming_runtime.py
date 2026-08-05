@@ -73,6 +73,9 @@ class FakeProcessor:
     async def flush(self) -> None:
         self.flushed = True
 
+    async def aclose(self) -> None:
+        return
+
 
 def _config(*, max_blocks: int | None = None) -> StreamingRuntimeConfig:
     return StreamingRuntimeConfig("mic-primary", 96_000, max_blocks)

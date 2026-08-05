@@ -6,17 +6,20 @@ socket.  It keeps raw audio in memory only until the single ASR request ends.
 
 from __future__ import annotations
 
-import asyncio
 import json
+import math
 import wave
 from dataclasses import dataclass
 from io import BytesIO
-from urllib.request import Request, urlopen
+from typing import cast
+
+import httpx
 
 from mic.config import ConfigError
 
 SAMPLE_RATE_HZ = 16_000
 FRAME_BYTES = 640
+MAX_RESPONSE_BYTES = 65_536
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,39 +42,73 @@ class OpenAICompatibleAsr:
     The OpenAI-compatible transcription path is owned by this adapter.
     """
 
-    def __init__(self, endpoint: str, model: str, api_key: str | None = None) -> None:
+    def __init__(
+        self,
+        endpoint: str,
+        model: str,
+        api_key: str | None = None,
+        *,
+        client: httpx.AsyncClient | None = None,
+    ) -> None:
         if not endpoint or not model:
             raise ConfigError(key="MIC_ASR_ENDPOINT", reason="endpoint and model required")
         self._endpoint = f"{endpoint.rstrip('/')}/audio/transcriptions"
         self._model = model
         self._api_key = api_key
+        self._client = (
+            httpx.AsyncClient(
+                timeout=httpx.Timeout(15.0),
+                follow_redirects=False,
+                trust_env=False,
+            )
+            if client is None
+            else client
+        )
+        self._owns_client = client is None
 
     async def transcribe(self, endpoint: AsrEndpoint) -> Recognition:
-        return await asyncio.to_thread(self._transcribe, endpoint)
-
-    def _transcribe(self, endpoint: AsrEndpoint) -> Recognition:
-        boundary = "----bitnp-mic-asr"
         wav = _wav(endpoint.pcm16le)
-        body = b"".join(
-            (
-                f"--{boundary}\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\n{self._model}\r\n".encode(),
-                f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"utterance.wav\"\r\nContent-Type: audio/wav\r\n\r\n".encode(),
-                wav,
-                f"\r\n--{boundary}--\r\n".encode(),
-            )
-        )
-        headers = {"Content-Type": f"multipart/form-data; boundary={boundary}"}
+        headers: dict[str, str] = {}
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
-        request = Request(self._endpoint, data=body, headers=headers, method="POST")
-        with urlopen(request, timeout=15) as response:
-            value = json.loads(response.read())
+        try:
+            async with self._client.stream(
+                "POST",
+                self._endpoint,
+                headers=headers,
+                data={"model": self._model},
+                files={"file": ("utterance.wav", wav, "audio/wav")},
+            ) as response:
+                response.raise_for_status()
+                body = bytearray()
+                async for chunk in response.aiter_bytes():
+                    body.extend(chunk)
+                    if len(body) > MAX_RESPONSE_BYTES:
+                        return Recognition("")
+        except (httpx.HTTPError, OSError):
+            return Recognition("")
+        try:
+            value = cast("object", json.loads(body))
+        except (json.JSONDecodeError, UnicodeError, ValueError):
+            return Recognition("")
         if not isinstance(value, dict) or not isinstance(value.get("text"), str):
-            raise ConfigError(key="MIC_ASR_ENDPOINT", reason="response lacks text")
+            return Recognition("")
         confidence = value.get("confidence")
-        if not isinstance(confidence, (int, float)) or isinstance(confidence, bool):
-            confidence = None
-        return Recognition(value["text"].strip(), None if confidence is None else float(confidence))
+        if confidence is not None and (
+            isinstance(confidence, bool)
+            or not isinstance(confidence, int | float)
+            or not math.isfinite(confidence)
+            or not 0 <= confidence <= 1
+        ):
+            return Recognition("")
+        return Recognition(
+            value["text"].strip(),
+            None if confidence is None else float(confidence),
+        )
+
+    async def aclose(self) -> None:
+        if self._owns_client:
+            await self._client.aclose()
 
 
 class EnergyEndpointDetector:

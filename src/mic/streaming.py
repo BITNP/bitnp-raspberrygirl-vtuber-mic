@@ -54,6 +54,8 @@ class EndpointProcessor(Protocol):
 
     async def flush(self) -> None: ...
 
+    async def aclose(self) -> None: ...
+
 
 @dataclass(frozen=True, slots=True)
 class StreamResources:
@@ -81,6 +83,7 @@ class StreamRuntime:
             endpoint_processor = self._resources.endpoint_processor
             if endpoint_processor is not None:
                 await endpoint_processor.flush()
+                await endpoint_processor.aclose()
             await self._resources.capture.aclose()
             await self._resources.control.aclose()
 
