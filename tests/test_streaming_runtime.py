@@ -135,9 +135,10 @@ def test_runtime_cancellation_closes_capture_control_and_flushes_processor() -> 
     assert processor.flushed is True
 
 
-def test_stream_config_requires_wss_except_for_explicit_loopback_ws() -> None:
+def test_stream_config_allows_authenticated_ws_on_explicit_trusted_lan() -> None:
     base_environment = {
-        "ORCHESTRATOR_WS_URL": "ws://127.0.0.1:8765/control",
+        "ORCHESTRATOR_WS_URL": "ws://orchestrator.lan:8765/control",
+        "TRUSTED_LAN_TOKEN": "mic-role-token",
         "BITNP_MIC_STREAM_ID": "mic-primary",
         "BITNP_MIC_RTP_TIMESTAMP": "96000",
         "BITNP_TRACE_ID": "trace-mic-001",
@@ -145,5 +146,20 @@ def test_stream_config_requires_wss_except_for_explicit_loopback_ws() -> None:
     }
     with pytest.raises(ConfigError, match="ORCHESTRATOR_WS_URL"):
         load_streaming_runtime_config(base_environment)
-    config = load_streaming_runtime_config({**base_environment, "MIC_ALLOW_LOOPBACK_WS": "true"})
+    config = load_streaming_runtime_config(
+        {**base_environment, "MIC_ALLOW_LOOPBACK_WS": "true"}
+    )
     assert config.stream_id == "mic-primary"
+
+
+def test_stream_config_requires_token_for_insecure_lan_ws() -> None:
+    environment = {
+        "ORCHESTRATOR_WS_URL": "ws://orchestrator.lan:8765/control",
+        "MIC_ALLOW_LOOPBACK_WS": "true",
+        "BITNP_MIC_STREAM_ID": "mic-primary",
+        "BITNP_MIC_RTP_TIMESTAMP": "96000",
+        "BITNP_TRACE_ID": "trace-mic-001",
+        "BITNP_SESSION_ID": "session-mic-001",
+    }
+    with pytest.raises(ConfigError, match="TRUSTED_LAN_TOKEN"):
+        load_streaming_runtime_config(environment)

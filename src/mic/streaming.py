@@ -18,7 +18,6 @@ SESSION_ID_KEY: Final = "BITNP_SESSION_ID"
 FRAME_SAMPLES: Final = 320
 PCM16_FRAME_BYTES: Final = FRAME_SAMPLES * 2
 FRAME_LOG_INTERVAL: Final = 100
-LOOPBACK_HOSTS: Final = frozenset({"127.0.0.1", "::1", "localhost"})
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -127,16 +126,19 @@ def load_streaming_runtime_config(env: Mapping[str, str] | None = None) -> Strea
 
 def _enforce_control_security(config: ServiceConfig, env: Mapping[str, str]) -> None:
     parsed = urlparse(config.orchestrator_ws_url)
-    if parsed.scheme == "wss":
-        if config.trusted_lan_token is None:
-            raise ConfigError(key="TRUSTED_LAN_TOKEN", reason="must be configured for WSS control")
-        return
-    if _loopback_ws_allowed(env) and (parsed.hostname or "").lower() in LOOPBACK_HOSTS:
-        return
-    raise ConfigError(key="ORCHESTRATOR_WS_URL", reason="must use WSS outside explicit loopback test mode")
+    if parsed.scheme == "ws" and not _insecure_ws_allowed(env):
+        raise ConfigError(
+            key="ORCHESTRATOR_WS_URL",
+            reason="must use WSS unless trusted-LAN insecure WS is explicitly enabled",
+        )
+    if config.trusted_lan_token is None:
+        raise ConfigError(
+            key="TRUSTED_LAN_TOKEN",
+            reason="must be configured for Orchestrator control",
+        )
 
 
-def _loopback_ws_allowed(env: Mapping[str, str]) -> bool:
+def _insecure_ws_allowed(env: Mapping[str, str]) -> bool:
     value = env.get(MIC_ALLOW_LOOPBACK_WS_KEY, "false").strip().lower()
     if value == "true":
         return True
