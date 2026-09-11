@@ -10,9 +10,9 @@ Python 3.12+、`uv`、`pytest`、`websockets` 和 `sounddevice`；ASR HTTP 调�
 
 `mic-stream` 组合 PortAudio capture、可选 ZipEnhancer ONNX 降噪、Silero VAD ONNX、CAM++、OpenAI-compatible ASR 和 Orchestrator WSS control boundary。20 ms PCM16 块持续采集；ZipEnhancer 在独立的、默认 500 ms 的有界窗口中串行增强，输出的 20 ms 帧才进入 Silero VAD。每个帧只执行一次有状态 Silero 判定，结果同时用于 ASR 端点和 CAM++。CAM++ 按 3D-Speaker 官方 Runtime FBank 契约把增强语音组成 1.5 秒窗口、每 0.75 秒产生一次临时 embedding；端点只结束当前 ASR 段，不能停止采集。
 
-ZipEnhancer 使用阿里语音实验室发布的官方 ONNX 导出格式：输入必须是 `noisy_mag`、`noisy_pha`，输出为 `amp_g`、`pha_g`。Mic 按模型指定的 400-point STFT、100-sample hop、幅度压缩系数 0.3，在 CPU 上处理 16 kHz 单声道 PCM16 的连续窗口；不会安装完整 ModelScope 或 Torch 常驻依赖。窗口默认为 500 ms 且必须是 20 ms 的整数倍，避免对每一个 20 ms 块单独推理造成 CPU 开销和边界伪影。单窗口推理失败时 Mic 记录不含音频内容的诊断并原样转发该窗口，保证 VAD 和采集持续工作。
+ZipEnhancer 使用阿里语音实验室发布的官方 ONNX 导出格式：输入必须是 `noisy_mag`、`noisy_pha`，输出为 `amp_g`、`pha_g`。Mic 按模型指定的 400-point STFT、100-sample hop、幅度压缩系数 0.3，在 CPU 上处理 16 kHz 单声道 PCM16 的连续窗口；不会安装完整 ModelScope 或 Torch 常驻依赖。窗口默认为 500 ms 且必须是 20 ms 的整数倍，避免对每一个 20 ms 块单独推理造成 CPU 开销和边界伪影。实时降噪以窗口音频时长为处理时限：超时或失败时原样转发该窗口，迟到增强结果不再使用。最多保留一个在途 CPU 推理；它尚未结束时后续窗口直接使用原始 PCM，避免计算任务积压。关闭时等待该次推理收尾，防止重连复用模型时遗留工作。此策略保证过载时继续处理音频，不代表慢硬件能持续提供实时降噪。
 
-CAM++ ONNX 只接受官方的 float32 `feature` 输入 `[1, frame_num, 80]` 并输出 `embedding`；不得将 PCM 直接送入模型。Mic 将受控 CAM++、其同名外部权重 `campp.onnx.data`、官方 Runtime `fbank_config.json`、ZipEnhancer 与 Silero VAD ONNX 作为包资源随安装分发，运行时不读取模型路径环境变量。三个处理器分别由默认开启的 `MIC_ENABLE_CAMPP`、`MIC_ENABLE_ZIPENHANCER`、`MIC_ENABLE_SILERO_VAD` 控制；关闭后启动过程不会构造或加载对应 ONNX session。FBank 严格限定 16 kHz、25 ms 窗、10 ms 帧移、80 mel bins、dither 0、power/log FBank 与逐窗均值归一化。CAM++ worker 与 HTTP ASR worker 并行，容量为 2 的有界 CAM++ 队列防止推理阻塞采集；每条 evidence 在发送完成后即释放，不记录或持久化 embedding。
+CAM++ ONNX 只接受官方的 float32 `feature` 输入 `[1, frame_num, 80]` 并输出 `embedding`；不得将 PCM 直接送入模型。Mic 将受控 CAM++、其同名外部权重 `campp.onnx.data`、官方 Runtime `fbank_config.json`、ZipEnhancer 与 Silero VAD ONNX 作为包资源随安装分发，运行时不读取模型路径环境变量。三个处理器分别由默认开启的 `MIC_ENABLE_CAMPP`、`MIC_ENABLE_ZIPENHANCER`、`MIC_ENABLE_SILERO_VAD` 控制；关闭后启动过程不会构造或加载对应 ONNX session。FBank 严格限定 16 kHz、25 ms 窗、10 ms 帧移、80 mel bins、dither 0、power/log FBank 与逐窗均值归一化。CAM++ worker 与 HTTP ASR worker 并行，容量为 2 的 CAM++ 待处理队列在满时淘汰最旧窗口，不等待慢推理或发送完成；每条 evidence 在发送完成后即释放，不记录或持久化 embedding。
 
 OpenAI-compatible `/audio/transcriptions` 是一次 multipart 请求，并非流式 ASR 协议。因此采集和本地 VAD 是流式的，而该 ASR 请求在端点形成后执行。若设置 `MIC_ASR_ENDPOINT_INCLUDES_VAD=true`，Mic 仍加载本地 Silero VAD 供 CAM++ 使用，但按 2 秒有界窗口提交 ASR，避免无限累积音频；该模式应仅用于服务端确实支持 VAD/分段的 ASR endpoint。
 
@@ -39,3 +39,9 @@ Mic 引用 Orchestrator 的 `schemas/protocol/envelope.schema.json` 和 `schemas
 本地安装、测试和健康检查见[用户文档](user.zh-CN.md)。受信任局域网 `ws://` 联调必须设置 `MIC_ALLOW_LOOPBACK_WS=true`，并继续提供 Mic 专属 `TRUSTED_LAN_TOKEN`；集中步骤见[受信任局域网明文联调指南](../../bitnp-raspberrygirl-vtuber-orchestrator/docs/local-loopback.zh-CN.md)。真实部署验证应在 Orchestrator 侧确认认证通过、`mic.input.register` 被接受，并且 `asr.final` / `voice.evidence` 只通过同一 control connection 到达。
 
 关闭 Silero VAD 时，ASR 端点与 CAM++ 共享端点检测器现有的能量判定（平均绝对样本幅度阈值 300），CAM++ 不会随之停用，静音也不会被标为语音。ASR 服务端自带 VAD 时固定窗口的发送策略保持不变。
+
+## 句首缓存与过载恢复
+
+启用本地 Silero 端点检测时保留最多 200 ms 前置音频，弥补 32 ms 判定窗口与检测延迟；语音开始后缓存并入 ASR 端点，时间戳仍指向原始音频范围。服务端 VAD 的固定窗口策略不变。采集断续会清除前置缓存、端点、Silero 状态和 CAM++ 窗口。
+
+ASR 待处理端点与 CAM++ 待处理窗口各保留最多两项；队列满时淘汰最旧的待处理项，正在执行的调用保持原有取消规则。原始帧队列最多 75 帧，过载时同样淘汰旧帧，消费者检测时间戳缺口后重置处理状态，不能跨缺口拼接语音。正常录音结束按队列顺序收尾；连接取消会先停止管线，再关闭采集设备。队列淘汰、断续重置及降噪超时/忙碌回退均记录 DEBUG 诊断。

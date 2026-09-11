@@ -136,3 +136,47 @@ def test_run_stream_stops_capture_when_control_connection_closes(monkeypatch) ->
         "capture_closed",
         "control_closed",
     ]
+
+
+def test_connection_cancellation_stops_pipeline_before_closing_capture(monkeypatch) -> None:
+    from mic.stream_cli import _run_connection
+
+    async def scenario() -> None:
+        started, stopped = asyncio.Event(), asyncio.Event()
+
+        async def pipeline(*args, **kwargs):
+            started.set()
+            try:
+                await asyncio.Future()
+            finally:
+                stopped.set()
+
+        class Capture:
+            closed = False
+
+            async def open(self):
+                pass
+
+            async def aclose(self):
+                assert stopped.is_set()
+                self.closed = True
+
+        class Control:
+            async def wait_closed(self):
+                await asyncio.Future()
+
+        monkeypatch.setattr("mic.stream_cli.run_continuous_pipeline", pipeline)
+        capture = Capture()
+        task = asyncio.create_task(_run_connection(
+            capture=capture, processor=None, control=Control(), start_timestamp=0,
+            enhancer_model=None, enhancer_window_ms=500, camplusplus=None,
+            session_id="test",
+        ))
+        await started.wait()
+        task.cancel()
+        import pytest
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert capture.closed
+
+    asyncio.run(scenario())

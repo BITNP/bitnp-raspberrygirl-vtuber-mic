@@ -93,6 +93,8 @@ async def run_stream() -> int:
                     enhancer_window_ms=service_config.zipenhancer_window_ms,
                     camplusplus=camplusplus,
                     session_id=config.session_id,
+                    trace_id=config.trace_id,
+                    stream_id=config.stream_id,
                 )
             except (ConnectionClosed, OSError, TimeoutError):
                 reconnect = True
@@ -122,6 +124,8 @@ async def _run_connection(
     enhancer_window_ms: int,
     camplusplus: CamPlusPlusOnnx | None,
     session_id: str,
+    trace_id: str = "",
+    stream_id: str = "",
 ) -> bool:
     await capture.open()
     try:
@@ -129,6 +133,7 @@ async def _run_connection(
             ZipEnhancerStreamingProcessor(
                 enhancer_model,
                 window_ms=enhancer_window_ms,
+                session_id=session_id,
             )
             if enhancer_model is not None
             else None
@@ -145,6 +150,9 @@ async def _run_connection(
                     else None
                 ),
                 campp_model=camplusplus,
+                session_id=session_id,
+                trace_id=trace_id,
+                stream_id=stream_id,
             )
         )
         control_closed_task = asyncio.create_task(control.wait_closed())
@@ -166,8 +174,9 @@ async def _run_connection(
                     await pipeline_task
         finally:
             control_closed_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await control_closed_task
+            if not pipeline_task.done():
+                pipeline_task.cancel()
+            _ = await asyncio.gather(pipeline_task, control_closed_task, return_exceptions=True)
     finally:
         await capture.aclose()
     return bool(getattr(control, "should_reconnect", False))

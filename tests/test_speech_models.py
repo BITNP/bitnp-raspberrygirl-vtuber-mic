@@ -152,3 +152,69 @@ def test_silero_vad_carries_the_previous_window_tail_as_context() -> None:
     assert numpy.allclose(
         session.inputs[1]["input"][0, :64], first_window[-64:] / 32768
     )
+
+
+def test_slow_enhancement_falls_back_without_accumulating_inference() -> None:
+    import asyncio
+    import threading
+
+    class SlowEnhancer:
+        calls = 0
+        started = threading.Event()
+        release = threading.Event()
+
+        def enhance(self, pcm: bytes) -> bytes:
+            self.calls += 1
+            self.started.set()
+            self.release.wait()
+            return bytes([99]) * len(pcm)
+
+    async def scenario() -> None:
+        model = SlowEnhancer()
+        processor = ZipEnhancerStreamingProcessor(model, window_ms=20)
+        frame = bytes([1]) * 640
+        try:
+            assert await processor.push_async(frame) == (frame,)
+            assert model.started.is_set()
+            for _ in range(10):
+                assert await processor.push_async(frame) == (frame,)
+            assert model.calls == 1
+            model.release.set()
+            await processor.aclose()
+        finally:
+            model.release.set()
+
+    asyncio.run(scenario())
+
+
+def test_late_enhancement_never_replaces_a_new_window() -> None:
+    import asyncio
+    import threading
+
+    class Model:
+        calls = 0
+        release = threading.Event()
+
+        def enhance(self, pcm: bytes) -> bytes:
+            self.calls += 1
+            if self.calls == 1:
+                self.release.wait()
+                return bytes([99]) * len(pcm)
+            return pcm
+
+    async def scenario() -> None:
+        model = Model()
+        processor = ZipEnhancerStreamingProcessor(model, window_ms=20)
+        try:
+            first, second = bytes([1]) * 640, bytes([2]) * 640
+            assert await processor.push_async(first) == (first,)
+            processor.reset()
+            model.release.set()
+            assert processor._inference is not None
+            await asyncio.shield(processor._inference)
+            assert await processor.push_async(second) == (second,)
+        finally:
+            model.release.set()
+            await processor.aclose()
+
+    asyncio.run(scenario())

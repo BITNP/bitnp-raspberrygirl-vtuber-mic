@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -86,12 +87,53 @@ class PcmEnhancer(Protocol):
 class ZipEnhancerStreamingProcessor:
     """Accumulates fixed PCM windows and fail-opens if one inference fails."""
 
-    def __init__(self, enhancer: PcmEnhancer, *, window_ms: int = 500) -> None:
+    def __init__(
+        self, enhancer: PcmEnhancer, *, window_ms: int = 500, session_id: str = ""
+    ) -> None:
         if window_ms < 20 or window_ms % 20:
             raise ValueError("window_ms must be a positive multiple of 20")
+        self._session_id = session_id
         self._enhancer = enhancer
         self._frames_per_window = window_ms // 20
         self._frames: list[bytes] = []
+        self._inference: asyncio.Task[tuple[bytes, ...]] | None = None
+
+    async def push_async(self, frame: bytes) -> tuple[bytes, ...]:
+        """Bound live inference to the audio duration, with one call in flight."""
+        self._validate_frame(frame)
+        self._frames.append(frame)
+        if len(self._frames) < self._frames_per_window:
+            return ()
+        return await self.flush_async()
+
+    async def flush_async(self) -> tuple[bytes, ...]:
+        if not self._frames:
+            return ()
+        frames = tuple(self._frames)
+        self._frames.clear()
+        previous = self._inference
+        if previous is not None:
+            if not previous.done():
+                LOGGER.debug("zipenhancer session=%s outcome=busy_raw frames=%d", self._session_id, len(frames))
+                return frames
+            # A timed-out result is never inserted into a later audio window.
+            _ = previous.result()
+        task = asyncio.create_task(asyncio.to_thread(self._process_frames, frames))
+        self._inference = task
+        done, _ = await asyncio.wait((task,), timeout=len(frames) * 0.020)
+        if done:
+            self._inference = None
+            return task.result()
+        LOGGER.debug("zipenhancer session=%s outcome=deadline_raw frames=%d", self._session_id, len(frames))
+        return frames
+
+    async def aclose(self) -> None:
+        """Drain the one CPU call before its model can be reused after reconnect."""
+        task = self._inference
+        if task is not None:
+            _ = await asyncio.shield(task)
+            self._inference = None
+        self._frames.clear()
 
     def push(self, frame: bytes) -> tuple[bytes, ...]:
         self._validate_frame(frame)
@@ -111,6 +153,9 @@ class ZipEnhancerStreamingProcessor:
     def _process_window(self) -> tuple[bytes, ...]:
         frames = tuple(self._frames)
         self._frames.clear()
+        return self._process_frames(frames)
+
+    def _process_frames(self, frames: tuple[bytes, ...]) -> tuple[bytes, ...]:
         raw = b"".join(frames)
         try:
             enhanced = self._enhancer.enhance(raw)
