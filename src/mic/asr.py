@@ -135,12 +135,18 @@ class EnergyEndpointDetector:
         self._last_end = 0
         self._silence = 0
 
+    def is_speech(self, frame: bytes) -> bool:
+        """Share the endpoint energy fallback with independent speech consumers."""
+        if len(frame) != FRAME_BYTES:
+            raise ConfigError(key="capture.block", reason="must contain exactly 640 PCM16 bytes")
+        return _energy(frame) >= self._threshold
+
     def push(
         self, frame: bytes, rtp_timestamp: int, *, speech: bool | None = None
     ) -> AsrEndpoint | None:
         if len(frame) != FRAME_BYTES:
             raise ConfigError(key="capture.block", reason="must contain exactly 640 PCM16 bytes")
-        is_speech = _energy(frame) >= self._threshold if speech is None else speech
+        is_speech = self.is_speech(frame) if speech is None else speech
         if is_speech and self._start is None:
             self._start = rtp_timestamp
         if self._start is None:

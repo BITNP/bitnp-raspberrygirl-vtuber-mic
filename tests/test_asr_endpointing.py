@@ -105,3 +105,31 @@ def test_asr_processor_logs_complete_transcript(caplog) -> None:
     messages = [record.getMessage() for record in caplog.records]
     assert "mic_asr_response stream=mic-primary text='请完整记录这段转写' confidence=0.9" in messages
     assert "mic_asr_final_sent stream=mic-primary segment=1 text='请完整记录这段转写'" in messages
+
+
+def test_disabling_silero_preserves_campp_speech_windows() -> None:
+    from mic.camplusplus import CamPlusPlusStreamingProcessor
+
+    async def scenario() -> None:
+        async with httpx.AsyncClient() as client:
+            processor = MicAsrEndpointProcessor(
+                cast(WebSocketStreamingControl, cast(object, object())),
+                stream_id="mic-test",
+                asr=OpenAICompatibleAsr("https://asr.example.test/v1", "asr", client=client),
+                vad=None,
+            )
+            campp = CamPlusPlusStreamingProcessor()
+            speech = (10000).to_bytes(2, "little", signed=True) * 320
+            silence = bytes(FRAME_BYTES)
+            windows = []
+            for index in range(100):
+                analysis = processor.analyze_enhanced_frame(speech, index * 320)
+                windows.extend(campp.push(speech, index * 320, speech=analysis.speech))
+            assert windows
+            assert windows[0].speech_ms == 1500
+            for index in range(20):
+                analysis = processor.analyze_enhanced_frame(silence, (100 + index) * 320)
+                assert not analysis.speech
+            assert analysis.endpoint is not None
+
+    asyncio.run(scenario())

@@ -37,3 +37,5 @@ Mic 引用 Orchestrator 的 `schemas/protocol/envelope.schema.json` 和 `schemas
 - 生产部署在 `ORCHESTRATOR_TLS_CA_PATH` 设置同一个只读 PEM CA bundle，用于校验 Orchestrator WSS 证书。该路径也由 Orchestrator、Sound、Comments 使用；主机系统信任库只是已安装相同 CA 时的可选替代。
 
 本地安装、测试和健康检查见[用户文档](user.zh-CN.md)。受信任局域网 `ws://` 联调必须设置 `MIC_ALLOW_LOOPBACK_WS=true`，并继续提供 Mic 专属 `TRUSTED_LAN_TOKEN`；集中步骤见[受信任局域网明文联调指南](../../bitnp-raspberrygirl-vtuber-orchestrator/docs/local-loopback.zh-CN.md)。真实部署验证应在 Orchestrator 侧确认认证通过、`mic.input.register` 被接受，并且 `asr.final` / `voice.evidence` 只通过同一 control connection 到达。
+
+关闭 Silero VAD 时，ASR 端点与 CAM++ 共享端点检测器现有的能量判定（平均绝对样本幅度阈值 300），CAM++ 不会随之停用，静音也不会被标为语音。ASR 服务端自带 VAD 时固定窗口的发送策略保持不变。

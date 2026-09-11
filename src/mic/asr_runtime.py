@@ -60,7 +60,7 @@ class MicAsrEndpointProcessor:
         vad_speech = self._speech(frame)
         endpoint_speech = True if self._asr_endpoint_includes_vad else vad_speech
         return FrameAnalysis(
-            speech=False if vad_speech is None else vad_speech,
+            speech=vad_speech,
             endpoint=self._detector.push(frame, rtp_timestamp, speech=endpoint_speech),
         )
 
@@ -83,10 +83,10 @@ class MicAsrEndpointProcessor:
         if self._vad is not None:
             self._vad.reset()
 
-    def _speech(self, frame: bytes) -> bool | None:
+    def _speech(self, frame: bytes) -> bool:
         vad = self._vad
         if vad is None:
-            return None
+            return self._detector.is_speech(frame)
         self._vad_buffer += frame
         if len(self._vad_buffer) >= 1024:
             self._last_vad_speech = vad.speech_probability(self._vad_buffer[:1024]) >= 0.5
