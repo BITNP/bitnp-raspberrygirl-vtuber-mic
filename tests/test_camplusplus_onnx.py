@@ -64,7 +64,7 @@ def _fbank_config(path: Path) -> Path:
 
 def test_camplusplus_requires_official_feature_contract(monkeypatch, tmp_path: Path) -> None:
     session = _Session()
-    monkeypatch.setattr("mic.camplusplus.onnxruntime.InferenceSession", lambda *_args, **_kwargs: session)
+    monkeypatch.setattr("mic.camplusplus.create_session", lambda *_args, **_kwargs: session)
     model_path = tmp_path / "campplus.onnx"
     model_path.touch()
     adapter = CamPlusPlusOnnx(model_path, "campplus-v1", _fbank_config(tmp_path / "fbank.json"))
@@ -78,7 +78,7 @@ def test_camplusplus_requires_official_feature_contract(monkeypatch, tmp_path: P
 
 def test_camplusplus_rejects_nonofficial_embedding_dimensions(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
-        "mic.camplusplus.onnxruntime.InferenceSession",
+        "mic.camplusplus.create_session",
         lambda *_args, **_kwargs: _Session([1, 256]),
     )
     model_path = tmp_path / "campplus.onnx"
@@ -90,7 +90,7 @@ def test_camplusplus_rejects_nonofficial_embedding_dimensions(monkeypatch, tmp_p
 
 def test_camplusplus_requires_dynamic_frame_axis(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
-        "mic.camplusplus.onnxruntime.InferenceSession",
+        "mic.camplusplus.create_session",
         lambda *_args, **_kwargs: _Session(input_shape=[1, 345, 80]),
     )
     model_path = tmp_path / "campplus.onnx"
@@ -103,7 +103,7 @@ def test_camplusplus_requires_dynamic_frame_axis(monkeypatch, tmp_path: Path) ->
 def test_camplusplus_rejects_invalid_runtime_embedding_shape(monkeypatch, tmp_path: Path) -> None:
     session = _Session(runtime_output=numpy.ones((192,), dtype=numpy.float32))
     monkeypatch.setattr(
-        "mic.camplusplus.onnxruntime.InferenceSession", lambda *_args, **_kwargs: session
+        "mic.camplusplus.create_session", lambda *_args, **_kwargs: session
     )
     model_path = tmp_path / "campplus.onnx"
     model_path.touch()

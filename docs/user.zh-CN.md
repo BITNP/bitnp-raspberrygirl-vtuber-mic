@@ -25,3 +25,9 @@ ORCHESTRATOR_WS_URL=wss://orchestrator.example.test/control uv run mic-health
 以实际运行 `mic-stream` 的服务账号验证 `BITNP_CAPTURE_DEVICE`，并在部署后说话与静音各测试一次。错误的默认设备、输出监视器或持续环境噪声会让 Mic 的端点检测不断产生伪片段，进而打断正在播放的回答。PipeWire/PulseAudio 桌面中，systemd 系统服务需要该账号可访问的音频会话；不要假定登录用户的默认音频设备会自动提供给 `bitnp`。
 
 现场讲解链路中，Mic 的 `BITNP_SESSION_ID` 与 `BITNP_MIC_STREAM_ID` 必须匹配 Orchestrator 已注册的 Mic 输入。Mic 注册后必须收到含独立 `input_epoch` 的 `mic.input.ready` 才打开采集；该 epoch 同时关联 ASR final 与 voice evidence，不受 Sound 输出 lease 变化影响。控制连接异常断开时 Mic 按 0.5、1、2、4、8、10 秒上限并带 ±20% 抖动重连；配置或模型错误不会重试。PortAudio overflow 会丢弃该帧、推进 20 ms RTP 时间并重置端点/VAD/增强/CAM++ 状态。Mic 不与 Sound 直连，也不建立 RTP 路由。启动顺序是 Orchestrator、Sound、Mic。
+
+### GPU 优先推理
+
+运行 `uv sync --locked` 即可安装当前平台的依赖。Linux/Windows x86-64 自动安装 ONNX Runtime GPU 与 CUDA 12/cuDNN 9 运行库，需要兼容 CUDA 12 的 NVIDIA 驱动；树莓派 ARM 等平台保留 CPU 运行库。Silero VAD、ZipEnhancer 和 CAM++ 均优先使用 CUDA，不可用或初始化失败时回退 CPU。启动日志中的 `onnx_provider` 显示每个模型实际启用的 provider；包含 `CUDAExecutionProvider` 表示 CUDA 已启用，但部分算子仍可能由 CPU 执行。音频预处理仍使用 CPU。首次安装 GPU 依赖需要下载数 GB 数据。
+
+GPU 优先不会改变流式方式或取消降噪超时保护，也不保证每个窗口都能实时增强。

@@ -6,7 +6,8 @@ requires-python = ">=3.12"
 dependencies = [
     "httpx>=0.28.1",
     "numpy>=2.0,<3",
-    "onnxruntime>=1.20,<2",
+    "onnxruntime-gpu[cuda,cudnn]>=1.21,<1.24; (sys_platform == 'linux' or sys_platform == 'win32') and (platform_machine == 'x86_64' or platform_machine == 'AMD64')",
+    "onnxruntime>=1.20,<2; (sys_platform != 'linux' and sys_platform != 'win32') or (platform_machine != 'x86_64' and platform_machine != 'AMD64')",
     "sounddevice==0.5.5",
     "websockets==16.1.1",
 ]

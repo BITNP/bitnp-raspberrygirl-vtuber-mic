@@ -6,10 +6,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy
-import onnxruntime
 
 from mic.campp_fbank import CamppFbank, CamppFbankConfig
 from mic.config import ConfigError
+from mic.onnx_session import create_session
 
 _EMBEDDING_DIMENSIONS = frozenset({192, 512})
 _FRAME_SAMPLES = 320
@@ -87,16 +87,14 @@ class CamPlusPlusStreamingProcessor:
 
 
 class CamPlusPlusOnnx:
-    """Runs a controlled CAM++ ``feature -> embedding`` ONNX model on CPU."""
+    """Runs a controlled CAM++ ``feature -> embedding`` ONNX model with GPU preference."""
 
     def __init__(self, model_path: Path, revision: str, fbank_config_path: Path) -> None:
         if not model_path.is_file() or not revision.strip():
             raise ConfigError(key="MIC_CAMPP_MODEL_PATH", reason="model and revision required")
         self.revision = revision.strip()
         self._fbank = CamppFbank(CamppFbankConfig.load(fbank_config_path))
-        self._session = onnxruntime.InferenceSession(
-            model_path, providers=["CPUExecutionProvider"]
-        )
+        self._session = create_session(model_path)
         inputs = self._session.get_inputs()
         outputs = self._session.get_outputs()
         if len(inputs) != 1 or inputs[0].name != "feature" or len(inputs[0].shape) != 3:

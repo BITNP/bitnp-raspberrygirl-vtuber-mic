@@ -12,6 +12,7 @@ import numpy
 import onnxruntime
 
 from mic.config import ConfigError
+from mic.onnx_session import create_session
 
 SAMPLE_RATE_HZ = 16_000
 
@@ -27,11 +28,11 @@ LOGGER = logging.getLogger(__name__)
 def _session(path: Path, key: str) -> onnxruntime.InferenceSession:
     if not path.is_file():
         raise ConfigError(key=key, reason="model file does not exist")
-    return onnxruntime.InferenceSession(path, providers=["CPUExecutionProvider"])
+    return create_session(path)
 
 
 class ZipEnhancerOnnx:
-    """Official two-input ZipEnhancer ONNX adapter, executed on CPU only."""
+    """Official two-input ZipEnhancer ONNX adapter, with GPU preference and CPU fallback."""
 
     def __init__(self, model_path: Path) -> None:
         self._session = _session(model_path, "MIC_ZIPENHANCER_MODEL_PATH")
@@ -128,7 +129,7 @@ class ZipEnhancerStreamingProcessor:
         return frames
 
     async def aclose(self) -> None:
-        """Drain the one CPU call before its model can be reused after reconnect."""
+        """Drain the one inference call before its model can be reused after reconnect."""
         task = self._inference
         if task is not None:
             _ = await asyncio.shield(task)
