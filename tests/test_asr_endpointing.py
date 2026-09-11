@@ -133,3 +133,39 @@ def test_disabling_silero_preserves_campp_speech_windows() -> None:
             assert analysis.endpoint is not None
 
     asyncio.run(scenario())
+
+
+def test_silero_onset_retains_audio_before_first_complete_window() -> None:
+    class Vad:
+        def speech_probability(self, _pcm: bytes) -> float:
+            return 1.0
+
+        def reset(self) -> None:
+            pass
+
+    processor = MicAsrEndpointProcessor(None, stream_id="test", asr=None, vad=Vad())
+    frames = [bytes([i]) * FRAME_BYTES for i in (1, 2, 3)]
+    for i, frame in enumerate(frames):
+        processor.analyze_enhanced_frame(frame, (0xFFFFFF00 + i * 320) % (1 << 32))
+    endpoint = processor.flush_enhanced_frames()
+    assert endpoint is not None
+    assert endpoint.pcm16le == b"".join(frames)
+    assert endpoint.rtp_start_timestamp == 0xFFFFFF00
+    assert endpoint.rtp_end_timestamp == (0xFFFFFF00 + 960) % (1 << 32)
+
+
+def test_preroll_is_bounded_and_reset_discards_old_audio() -> None:
+    detector = EnergyEndpointDetector(pre_roll_frames=2)
+    for i in range(10):
+        detector.push(bytes([i]) * FRAME_BYTES, i * 320, speech=False)
+    detector.push(bytes([10]) * FRAME_BYTES, 3200, speech=True)
+    endpoint = detector.flush()
+    assert endpoint is not None
+    assert endpoint.rtp_start_timestamp == 8 * 320
+    assert len(endpoint.pcm16le) == 3 * FRAME_BYTES
+    detector.push(bytes(FRAME_BYTES), 3520, speech=False)
+    detector.reset()
+    detector.push(bytes([11]) * FRAME_BYTES, 3840, speech=True)
+    endpoint = detector.flush()
+    assert endpoint is not None
+    assert endpoint.rtp_start_timestamp == 3840

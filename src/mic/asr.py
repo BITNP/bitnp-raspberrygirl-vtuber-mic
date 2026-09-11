@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import math
 import wave
+from collections import deque
 from dataclasses import dataclass
 from io import BytesIO
 from typing import cast
@@ -124,9 +125,13 @@ class EnergyEndpointDetector:
         threshold: int = 300,
         trailing_silence_frames: int = 20,
         max_frames: int = 1_500,
+        pre_roll_frames: int = 0,
     ) -> None:
         if max_frames < 1:
             raise ValueError("max_frames must be positive")
+        if not 0 <= pre_roll_frames < max_frames:
+            raise ValueError("pre_roll_frames must be below max_frames")
+        self._pre_roll: deque[tuple[bytes, int]] = deque(maxlen=pre_roll_frames)
         self._threshold = threshold
         self._trailing_silence_frames = trailing_silence_frames
         self._max_frames = max_frames
@@ -148,8 +153,11 @@ class EnergyEndpointDetector:
             raise ConfigError(key="capture.block", reason="must contain exactly 640 PCM16 bytes")
         is_speech = self.is_speech(frame) if speech is None else speech
         if is_speech and self._start is None:
-            self._start = rtp_timestamp
+            self._start = self._pre_roll[0][1] if self._pre_roll else rtp_timestamp
+            self._frames.extend(frame for frame, _ in self._pre_roll)
+            self._pre_roll.clear()
         if self._start is None:
+            self._pre_roll.append((frame, rtp_timestamp))
             return None
         self._frames.append(frame)
         self._last_end = (rtp_timestamp + 320) % (1 << 32)
@@ -170,6 +178,7 @@ class EnergyEndpointDetector:
         return result
 
     def reset(self) -> None:
+        self._pre_roll.clear()
         self._frames.clear()
         self._start = None
         self._last_end = 0

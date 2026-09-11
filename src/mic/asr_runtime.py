@@ -38,7 +38,9 @@ class MicAsrEndpointProcessor:
         # When it owns VAD, submit bounded two-second windows instead of keeping
         # an unbounded capture until the device closes.
         self._detector = EnergyEndpointDetector(
-            max_frames=100 if asr_endpoint_includes_vad else 1_500
+            max_frames=100 if asr_endpoint_includes_vad else 1_500,
+            # Keep 200 ms for the 32 ms VAD window and onset detection delay.
+            pre_roll_frames=10 if vad is not None and not asr_endpoint_includes_vad else 0,
         )
         self._sequence = 1
         self._segment = 0
