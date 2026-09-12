@@ -1,6 +1,6 @@
 # Mic 用户文档
 
-Mic 负责把现场麦克风采集到的声音送入 Raspberry Girl 系统。部署入口是 `mic-stream`。
+Mic 负责把现场麦克风采集到的声音送入树莓娘系统。部署入口是 `mic-stream`。
 
 ## 功能
 
